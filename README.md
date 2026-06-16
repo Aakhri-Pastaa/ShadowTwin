@@ -1,4 +1,4 @@
-# project-name-here
+# ShadowTwin
 
 > A closed-loop, AI-orchestrated purple-team lab: attack → fix → re-attack to
 > prove the fix worked. Runs entirely against a bundled, deliberately
