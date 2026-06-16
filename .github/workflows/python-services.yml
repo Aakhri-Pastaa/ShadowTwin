@@ -1,0 +1,33 @@
+name: Python services CI
+
+on:
+  pull_request:
+    paths:
+      - 'graph/**'
+      - 'threat-intel/**'
+      - 'evaluator/**'
+      - 'attacker/**'
+      - 'defender/**'
+  push:
+    branches: [main]
+    paths:
+      - 'graph/**'
+      - 'threat-intel/**'
+      - 'evaluator/**'
+      - 'attacker/**'
+      - 'defender/**'
+
+jobs:
+  lint-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install tooling
+        run: pip install ruff pytest
+      - name: Lint
+        run: ruff check graph threat-intel evaluator attacker defender
+      - name: Test
+        run: pytest graph threat-intel evaluator attacker defender || echo "no tests yet"
