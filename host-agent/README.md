@@ -12,12 +12,13 @@ collector: systemd-journald authentication events.
 
 ## Status & roadmap
 
-- ✅ **Slice 1 — Foundation + auth collector** (current): the `Collector` /
-  `Event` contract, UUID-stamped events, the `auth.journald` collector,
-  signal-driven lifecycle, and config. Events print to stdout for now.
-- ⬜ **Slice 2 — Shipping spine** — make events actually reach the platform:
-  - **PR-A — durable disk buffer** (store-and-forward; survives restarts and
-    platform outages), replacing the stdout sink.
+- ✅ **Slice 1 — Foundation + auth collector**: the `Collector` / `Event`
+  contract, UUID-stamped events, the `auth.journald` collector, signal-driven
+  lifecycle, and config (events went straight to stdout).
+- 🚧 **Slice 2 — Shipping spine** — make events actually reach the platform:
+  - ✅ **PR-A — durable disk buffer**: a crash-safe on-disk queue between the
+    collector and the sink (collector → buffer → drain), so events survive
+    restarts and platform outages.
   - **PR-B — mTLS transport** (batched, retrying shipper) + one-time certificate
     **enrollment** (token + CSR; the private key never leaves the host), with a
     dev-only mock platform to test against. Wire contract: `docs/adr/0003-*`.
@@ -32,8 +33,13 @@ collector: systemd-journald authentication events.
 - Ships one collector, `auth.journald` (`internal/collectors/auth`), which follows
   `auth`/`authpriv` events (sshd, sudo, su, login, PAM, polkit) by driving
   `journalctl -o json` and normalizing each entry.
-- Emits events as newline-delimited JSON on **stdout**; operational logs go to
-  **stderr**, so the two never mix.
+- Persists every event to a crash-safe, FIFO on-disk **buffer**
+  (`internal/buffer`, spooled under `~/.host-agent/queue`) before anything reads
+  it, so a process crash or a stalled sink never drops telemetry. The buffer is
+  bounded (oldest dropped when full) and dead-letters events it can't parse.
+- Drains the buffer to **stdout** as newline-delimited JSON, deleting each batch
+  only after it is emitted (at-least-once). Operational logs go to **stderr**, so
+  the two never mix. The next slice swaps this stdout sink for the mTLS shipper.
 - Resumes after a restart from journald's cursor, persisted to
   `~/.host-agent/auth.journald.cursor`. No naive file tailing.
 - Every event carries a generated UUID so downstream retries can dedupe.
@@ -41,8 +47,9 @@ collector: systemd-journald authentication events.
 ## Architecture (one-way pipeline)
 
 ```
-journald ──(journalctl -o json)──▶ auth collector ──Event──▶ stdout (JSON)
-                                                  └─cursor──▶ ~/.host-agent/
+journald ─(journalctl -o json)─▶ auth collector ─Event─▶ [ disk buffer ] ─▶ stdout (JSON)
+                                              └─cursor─▶ ~/.host-agent/    (FIFO; drained in
+                                                                           batches, acked after emit)
 ```
 
 The agent only ever **sends**. It has no inbound control channel and accepts no
