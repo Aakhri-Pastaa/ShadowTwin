@@ -16,10 +16,9 @@ collector: systemd-journald authentication events.
   contract, UUID-stamped events, the `auth.journald` collector, signal-driven
   lifecycle, and config (events went straight to stdout).
 - 🚧 **Slice 2 — Shipping spine** — make events actually reach the platform:
-  - 🚧 **PR-A — durable disk buffer** *(in progress on `feat/host-agent-buffer`)*:
-    inserts a crash-safe on-disk queue between the collector and the sink
-    (collector → buffer → drain), so events survive restarts and platform
-    outages. Replaces the direct stdout write.
+  - ✅ **PR-A — durable disk buffer**: a crash-safe on-disk queue between the
+    collector and the sink (collector → buffer → drain), so events survive
+    restarts and platform outages.
   - **PR-B — mTLS transport** (batched, retrying shipper) + one-time certificate
     **enrollment** (token + CSR; the private key never leaves the host), with a
     dev-only mock platform to test against. Wire contract: `docs/adr/0003-*`.
