@@ -6,10 +6,24 @@ binary with no third-party dependencies and nothing to compile on the target —
 by design, so install is one step (see
 `docs/adr/0002-custom-host-agent-not-wazuh-fork.md`).
 
-This is the **foundation slice**: the collector framework plus one collector
-(systemd-journald authentication events). The disk-backed buffer, the mTLS
-shipper, and certificate enrollment are stubbed packages that land in later
-slices.
+The agent is built in slices, each landing as its own PR — see
+**Status & roadmap** below. Today it runs the collector framework plus one
+collector: systemd-journald authentication events.
+
+## Status & roadmap
+
+- ✅ **Slice 1 — Foundation + auth collector** (current): the `Collector` /
+  `Event` contract, UUID-stamped events, the `auth.journald` collector,
+  signal-driven lifecycle, and config. Events print to stdout for now.
+- ⬜ **Slice 2 — Shipping spine** — make events actually reach the platform:
+  - **PR-A — durable disk buffer** (store-and-forward; survives restarts and
+    platform outages), replacing the stdout sink.
+  - **PR-B — mTLS transport** (batched, retrying shipper) + one-time certificate
+    **enrollment** (token + CSR; the private key never leaves the host), with a
+    dev-only mock platform to test against. Wire contract: `docs/adr/0003-*`.
+- ⬜ **Later** — more collectors (osquery process/network, auditd,
+  Windows/Sysmon), packaging (systemd unit, dedicated service user,
+  single-binary install), and hardening (tamper protection, secure auto-update).
 
 ## What it does today
 
@@ -111,9 +125,8 @@ go test ./...
 Tests use journal fixtures and a fake reader — no root and no live journald
 required.
 
-## Not in this slice (deliberately deferred)
+## Beyond the current slice
 
-Windows/Sysmon collectors, the disk-backed buffer, the mTLS shipper, cert
-enrollment/renewal/revocation, tamper protection, secure auto-update, and config
-integrity validation. The `internal/buffer`, `internal/transport`, and
-`internal/enroll` packages are placeholders marking where those land.
+See **Status & roadmap** above for what's next and what's deferred. The
+`internal/buffer`, `internal/transport`, and `internal/enroll` packages are
+placeholders marking where the shipping spine lands.
