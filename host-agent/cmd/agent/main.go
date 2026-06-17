@@ -1,14 +1,17 @@
 // Command agent is the ShadowTwin host agent: it runs telemetry collectors,
-// persists every event to a durable on-disk buffer, and drains that buffer to a
-// sink. This slice's sink is stdout (newline-delimited JSON); the next slice
-// swaps it for the mTLS shipper without changing the buffer contract.
-// Operational logging (startup, errors, shutdown) goes to stderr so it never
-// mixes with the event stream.
+// persists every event to a durable on-disk buffer, and ships batches to the
+// platform over mutually authenticated TLS. On first run it enrolls (generates
+// a key pair locally and exchanges a CSR + one-time token for a client cert).
+// Operational logging goes to stderr. With -dry-run the agent skips enrollment
+// and prints events to stdout instead of shipping them — handy for debugging.
 package main
 
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"flag"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -16,15 +19,25 @@ import (
 	"time"
 
 	"github.com/Aakhri-Pastaa/ShadowTwin/host-agent/internal/buffer"
+	"github.com/Aakhri-Pastaa/ShadowTwin/host-agent/internal/collectors"
 	"github.com/Aakhri-Pastaa/ShadowTwin/host-agent/internal/collectors/auth"
 	"github.com/Aakhri-Pastaa/ShadowTwin/host-agent/internal/config"
+	"github.com/Aakhri-Pastaa/ShadowTwin/host-agent/internal/enroll"
+	"github.com/Aakhri-Pastaa/ShadowTwin/host-agent/internal/transport"
 )
 
+// deliverFunc ships one batch of events. A nil error means delivered (ack it);
+// otherwise the error wraps transport.ErrPermanent or transport.ErrRetryable.
+type deliverFunc func(context.Context, []collectors.Event) error
+
 func main() {
+	dryRun := flag.Bool("dry-run", false, "print events to stdout instead of shipping them to the platform over mTLS")
+	flag.Parse()
+
 	log.SetOutput(os.Stderr)
 	log.SetFlags(log.LstdFlags | log.LUTC)
 
-	cfg := config.Default()
+	cfg := config.Load()
 	if err := cfg.EnsureStateDir(); err != nil {
 		log.Fatalf("cannot create state dir %q: %v", cfg.StateDir, err)
 	}
@@ -38,13 +51,20 @@ func main() {
 	}
 
 	// Cancelled on SIGINT/SIGTERM. This is the single shutdown signal, and it
-	// propagates to the collector through the context.
+	// propagates to the collector and the in-flight shipment through the context.
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 
+	// Build the sink before starting collection so an enrollment failure aborts
+	// immediately rather than buffering events with nowhere to ship them.
+	sinkName, deliver, err := buildSink(ctx, *dryRun, cfg)
+	if err != nil {
+		log.Fatalf("cannot initialize sink: %v", err)
+	}
+
 	collector := auth.New(cfg.StateDir)
-	log.Printf("starting collector %q (state dir %q, queue %q)",
-		collector.Name(), cfg.StateDir, cfg.QueueDir)
+	log.Printf("starting collector %q (state %q, queue %q, sink %s)",
+		collector.Name(), cfg.StateDir, cfg.QueueDir, sinkName)
 
 	events, err := collector.Start(ctx)
 	if err != nil {
@@ -63,25 +83,13 @@ func main() {
 		}
 	}()
 
-	// Consumer: drain the buffer to stdout on a fixed cadence, acking (deleting)
-	// each batch only after it is emitted. stopDrain triggers one last drain
-	// after the producer has flushed the final events into the buffer.
+	// Consumer: drain the buffer to the sink. stopDrain triggers one final flush
+	// after the producer has flushed the last events into the buffer.
 	stopDrain := make(chan struct{})
 	consumerDone := make(chan struct{})
 	go func() {
 		defer close(consumerDone)
-		enc := json.NewEncoder(os.Stdout)
-		ticker := time.NewTicker(cfg.FlushInterval)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-stopDrain:
-				drain(enc, q, cfg.BatchSize)
-				return
-			case <-ticker.C:
-				drain(enc, q, cfg.BatchSize)
-			}
-		}
+		runSink(ctx, q, cfg, deliver, stopDrain)
 	}()
 
 	<-ctx.Done()
@@ -94,42 +102,133 @@ func main() {
 	}
 
 	<-producerDone   // collector channel fully drained into the buffer
-	close(stopDrain) // ask the consumer for a final drain
-	<-consumerDone   // final drain finished
+	close(stopDrain) // ask the consumer for a final flush
+	<-consumerDone
 
 	if n := q.Len(); n > 0 {
 		log.Printf("%d event(s) remain buffered in %q; they resume on next start", n, cfg.QueueDir)
 	}
 }
 
-// drain emits whole batches from the buffer to the encoder until the buffer is
-// empty or a batch can't be written. A batch is acked only after every event in
-// it is encoded; on a write error the batch stays buffered and is retried on the
-// next pass.
-func drain(enc *json.Encoder, q *buffer.Queue, batchSize int) {
+// buildSink returns the named delivery function the consumer drains into: a
+// stdout encoder under -dry-run, or the enrolled mTLS shipper otherwise.
+func buildSink(ctx context.Context, dryRun bool, cfg config.Config) (string, deliverFunc, error) {
+	if dryRun {
+		enc := json.NewEncoder(os.Stdout)
+		return "stdout (dry-run)", func(_ context.Context, evs []collectors.Event) error {
+			for _, ev := range evs {
+				if err := enc.Encode(ev); err != nil {
+					return fmt.Errorf("%w: encode to stdout: %v", transport.ErrRetryable, err)
+				}
+			}
+			return nil
+		}, nil
+	}
+
+	tlsConf, err := enroll.EnsureIdentity(ctx, cfg)
+	if err != nil {
+		return "", nil, err
+	}
+	host, _ := os.Hostname()
+	shipper := transport.New(cfg.IngestEndpoint, host, tlsConf)
+	return "mTLS " + cfg.IngestEndpoint, shipper.Send, nil
+}
+
+// runSink drains the buffer into deliver on a fixed cadence, acking delivered
+// batches, dead-lettering poison ones, and backing off on retryable failures.
+func runSink(ctx context.Context, q *buffer.Queue, cfg config.Config, deliver deliverFunc, stopDrain <-chan struct{}) {
+	ticker := time.NewTicker(cfg.FlushInterval)
+	defer ticker.Stop()
+	attempt := 0
+
 	for {
-		batch, err := q.ReadBatch(batchSize, 0)
+		select {
+		case <-stopDrain:
+			finalFlush(q, cfg, deliver)
+			return
+		case <-ctx.Done():
+			// Shutting down: the context is cancelled, so stop normal delivery,
+			// wait for the producer to finish, then do one bounded final flush.
+			<-stopDrain
+			finalFlush(q, cfg, deliver)
+			return
+		case <-ticker.C:
+		}
+
+	drainPass:
+		for {
+			batch, err := q.ReadBatch(cfg.BatchSize, 0)
+			if err != nil {
+				log.Printf("sink: read batch failed: %v", err)
+				break drainPass
+			}
+			if batch.Len() == 0 {
+				attempt = 0
+				break drainPass
+			}
+
+			switch err = deliver(ctx, batch.Events); {
+			case err == nil:
+				if e := q.Ack(batch); e != nil {
+					log.Printf("sink: ack failed: %v", e)
+				}
+				attempt = 0
+			case errors.Is(err, transport.ErrPermanent):
+				log.Printf("sink: dead-lettering %d poison event(s): %v", batch.Len(), err)
+				if e := q.DeadLetter(batch); e != nil {
+					log.Printf("sink: dead-letter failed: %v", e)
+				}
+				attempt = 0
+			default:
+				attempt++
+				wait := transport.Backoff(attempt, cfg.BackoffBase, cfg.BackoffCap)
+				log.Printf("sink: delivery failed (attempt %d), backing off %s: %v",
+					attempt, wait.Round(time.Millisecond), err)
+				waitOrStop(ctx, stopDrain, wait)
+				break drainPass // outer select handles shutdown; next tick retries
+			}
+		}
+	}
+}
+
+// finalFlush makes one bounded, best-effort pass over the buffer at shutdown.
+// Anything not delivered stays on disk and resumes on the next run.
+func finalFlush(q *buffer.Queue, cfg config.Config, deliver deliverFunc) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	for {
+		batch, err := q.ReadBatch(cfg.BatchSize, 0)
 		if err != nil {
-			log.Printf("buffer: read batch failed: %v", err)
+			log.Printf("sink: final read failed: %v", err)
 			return
 		}
 		if batch.Len() == 0 {
 			return
 		}
-		emitted := true
-		for _, ev := range batch.Events {
-			if err := enc.Encode(ev); err != nil {
-				log.Printf("failed to encode event %s: %v", ev.ID, err)
-				emitted = false
-				break
+		switch err = deliver(ctx, batch.Events); {
+		case err == nil:
+			if e := q.Ack(batch); e != nil {
+				log.Printf("sink: final ack failed: %v", e)
 			}
-		}
-		if !emitted {
-			return // leave the batch buffered; retry next pass
-		}
-		if err := q.Ack(batch); err != nil {
-			log.Printf("buffer: ack failed: %v", err)
+		case errors.Is(err, transport.ErrPermanent):
+			_ = q.DeadLetter(batch)
+		default:
+			log.Printf("sink: %d event(s) left buffered for next run: %v", batch.Len(), err)
 			return
 		}
+		if ctx.Err() != nil {
+			return
+		}
+	}
+}
+
+// waitOrStop sleeps for d, returning early if shutdown begins.
+func waitOrStop(ctx context.Context, stopDrain <-chan struct{}, d time.Duration) {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-t.C:
+	case <-stopDrain:
+	case <-ctx.Done():
 	}
 }
