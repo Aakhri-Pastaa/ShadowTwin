@@ -66,7 +66,9 @@ POST {ingest}   (mTLS; client cert required)   [Content-Encoding: gzip]
 ```
 
 Until the real platform exists, a dev-only `cmd/mock-platform` implements this
-contract for local and test use.
+contract for local and test use. Certificate renewal (`POST /renew`), revocation
+(`POST /revoke`), and CA distribution (`GET /ca`) extend this contract in
+ADR-0004.
 
 ## Consequences
 

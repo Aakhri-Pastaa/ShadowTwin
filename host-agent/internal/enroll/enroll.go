@@ -1,14 +1,18 @@
-// Package enroll obtains the mTLS client identity the transport uses. On first
-// run it generates a key pair locally (the private key never leaves the host),
-// sends a CSR plus a one-time token to the platform's enrollment endpoint, and
-// stores the returned certificate. On later runs it loads the stored identity.
-// Certificate renewal and revocation are a later slice.
+// Package enroll manages the agent's mTLS client identity. On first run it
+// generates a key pair locally (the private key never leaves the host), sends a
+// CSR plus a one-time token to the platform's enrollment endpoint, and stores
+// the returned certificate. The returned *Identity can renew itself in place
+// (a fresh CSR over its current mTLS identity, before expiry), so the transport
+// keeps using one *tls.Config across rotations. If the stored certificate has
+// expired and a token is available, EnsureIdentity re-enrolls.
 package enroll
 
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -16,6 +20,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/Aakhri-Pastaa/ShadowTwin/host-agent/internal/config"
@@ -28,33 +33,58 @@ const (
 	caFile   = "ca.crt"
 )
 
-type enrollRequest struct {
+type csrRequest struct {
 	CSRPEM  string `json:"csr_pem"`
 	AgentID string `json:"agent_id"`
 }
 
-type enrollResponse struct {
+type certResponse struct {
 	CertPEM string `json:"cert_pem"`
 	CAPEM   string `json:"ca_pem"`
 }
 
-// EnsureIdentity returns a ready mTLS client config, enrolling first if needed.
-func EnsureIdentity(ctx context.Context, cfg config.Config) (*tls.Config, error) {
+// Identity is the agent's mTLS client identity: a private key (never leaves the
+// host), the current certificate, and the pinned platform CA. It is safe for
+// concurrent use; Renew swaps the certificate in place while the transport keeps
+// the same *tls.Config (which fetches the live cert per handshake).
+type Identity struct {
+	mu       sync.RWMutex
+	key      *ecdsa.PrivateKey
+	keyPEM   []byte
+	cert     tls.Certificate
+	leaf     *x509.Certificate
+	caPool   *x509.CertPool
+	certPath string
+}
+
+// EnsureIdentity loads the stored identity, enrolling first if there is none —
+// or re-enrolling if the stored certificate has expired and a token is set.
+func EnsureIdentity(ctx context.Context, cfg config.Config) (*Identity, error) {
 	keyPath := filepath.Join(cfg.CertDir, keyFile)
 	certPath := filepath.Join(cfg.CertDir, certFile)
 	caPath := filepath.Join(cfg.CertDir, caFile)
 
-	// Fast path: already enrolled.
 	if fileExists(keyPath) && fileExists(certPath) && fileExists(caPath) {
-		certPEM, keyPEM, caPEM, err := readIdentity(certPath, keyPath, caPath)
+		certPEM, keyPEM, caPEM, err := readPEMs(certPath, keyPath, caPath)
 		if err != nil {
 			return nil, err
 		}
-		return pki.ClientConfig(certPEM, keyPEM, caPEM)
+		id, err := newIdentity(certPEM, keyPEM, caPEM, certPath)
+		if err != nil {
+			return nil, err
+		}
+		if time.Now().Before(id.NotAfter()) {
+			return id, nil // stored cert still valid
+		}
+		// Expired — re-enroll if we can, otherwise the operator must re-onboard.
+		if cfg.EnrollToken == "" {
+			return nil, fmt.Errorf("enroll: stored certificate expired at %s and AGENT_ENROLL_TOKEN is empty; re-onboarding required",
+				id.NotAfter().UTC().Format(time.RFC3339))
+		}
 	}
 
-	// Need to enroll. The platform CA must be present out-of-band so we can trust
-	// the enrollment endpoint (no trust-on-first-use).
+	// Enroll. The platform CA must be present out-of-band so we can trust the
+	// enrollment endpoint (no trust-on-first-use).
 	caPEM, err := os.ReadFile(caPath)
 	if err != nil {
 		return nil, fmt.Errorf("enroll: platform CA not found at %s (place it there to enroll): %w", caPath, err)
@@ -79,7 +109,15 @@ func EnsureIdentity(ctx context.Context, cfg config.Config) (*tls.Config, error)
 		return nil, err
 	}
 
-	certPEM, err := requestCert(ctx, cfg, csrPEM, caPEM)
+	pool, err := pki.CAPool(caPEM)
+	if err != nil {
+		return nil, err
+	}
+	client := &http.Client{
+		Timeout:   30 * time.Second,
+		Transport: &http.Transport{TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS13}},
+	}
+	certPEM, err := postCSR(ctx, client, cfg.EnrollEndpoint, cfg.EnrollToken, csrPEM)
 	if err != nil {
 		return nil, err
 	}
@@ -91,50 +129,126 @@ func EnsureIdentity(ctx context.Context, cfg config.Config) (*tls.Config, error)
 	if err := writeFileAtomic(certPath, certPEM, 0o644); err != nil {
 		return nil, err
 	}
-	return pki.ClientConfig(certPEM, keyPEM, caPEM)
+	return newIdentity(certPEM, keyPEM, caPEM, certPath)
 }
 
-func requestCert(ctx context.Context, cfg config.Config, csrPEM, caPEM []byte) ([]byte, error) {
+// TLSConfig returns a config that presents the agent's *current* certificate
+// (fetched per handshake, so renewals take effect without rebuilding it) and
+// trusts only the pinned platform CA.
+func (i *Identity) TLSConfig() *tls.Config {
+	return &tls.Config{
+		MinVersion: tls.VersionTLS13,
+		RootCAs:    i.caPool,
+		GetClientCertificate: func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
+			i.mu.RLock()
+			defer i.mu.RUnlock()
+			c := i.cert
+			return &c, nil
+		},
+	}
+}
+
+// NotAfter is the current certificate's expiry.
+func (i *Identity) NotAfter() time.Time {
+	i.mu.RLock()
+	defer i.mu.RUnlock()
+	return i.leaf.NotAfter
+}
+
+// NeedsRenewal reports whether the certificate expires within the given window.
+func (i *Identity) NeedsRenewal(before time.Duration) bool {
+	return time.Until(i.NotAfter()) <= before
+}
+
+// Renew requests a fresh certificate for the existing key over the current mTLS
+// identity (no token), swaps it in, and rewrites client.crt.
+func (i *Identity) Renew(ctx context.Context, cfg config.Config) error {
+	i.mu.RLock()
+	key := i.key
+	keyPEM := i.keyPEM
+	i.mu.RUnlock()
+
+	csrPEM, err := pki.MarshalCSRPEM(key, agentID())
+	if err != nil {
+		return err
+	}
+	client := &http.Client{
+		Timeout:   30 * time.Second,
+		Transport: &http.Transport{TLSClientConfig: i.TLSConfig()},
+	}
+	certPEM, err := postCSR(ctx, client, cfg.RenewEndpoint, "", csrPEM) // mTLS authenticates; no token
+	if err != nil {
+		return fmt.Errorf("renew: %w", err)
+	}
+	newCert, err := tls.X509KeyPair(certPEM, keyPEM)
+	if err != nil {
+		return fmt.Errorf("renew: load renewed keypair: %w", err)
+	}
+	leaf, err := x509.ParseCertificate(newCert.Certificate[0])
+	if err != nil {
+		return fmt.Errorf("renew: parse renewed cert: %w", err)
+	}
+
+	i.mu.Lock()
+	i.cert = newCert
+	i.leaf = leaf
+	i.mu.Unlock()
+
+	return writeFileAtomic(i.certPath, certPEM, 0o644)
+}
+
+func newIdentity(certPEM, keyPEM, caPEM []byte, certPath string) (*Identity, error) {
+	cert, err := tls.X509KeyPair(certPEM, keyPEM)
+	if err != nil {
+		return nil, fmt.Errorf("enroll: load keypair: %w", err)
+	}
+	leaf, err := x509.ParseCertificate(cert.Certificate[0])
+	if err != nil {
+		return nil, fmt.Errorf("enroll: parse certificate: %w", err)
+	}
+	key, err := pki.ParseKeyPEM(keyPEM)
+	if err != nil {
+		return nil, err
+	}
 	pool, err := pki.CAPool(caPEM)
 	if err != nil {
 		return nil, err
 	}
-	client := &http.Client{
-		Timeout: 30 * time.Second,
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{RootCAs: pool, MinVersion: tls.VersionTLS13},
-		},
-	}
+	return &Identity{key: key, keyPEM: keyPEM, cert: cert, leaf: leaf, caPool: pool, certPath: certPath}, nil
+}
 
-	reqBody, err := json.Marshal(enrollRequest{CSRPEM: string(csrPEM), AgentID: agentID()})
+// postCSR sends a CSR to endpoint (with an optional bearer token) and returns
+// the issued certificate PEM.
+func postCSR(ctx context.Context, client *http.Client, endpoint, token string, csrPEM []byte) ([]byte, error) {
+	body, err := json.Marshal(csrRequest{CSRPEM: string(csrPEM), AgentID: agentID()})
 	if err != nil {
 		return nil, fmt.Errorf("enroll: marshal request: %w", err)
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, cfg.EnrollEndpoint, bytes.NewReader(reqBody))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(body))
 	if err != nil {
 		return nil, fmt.Errorf("enroll: build request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+cfg.EnrollToken)
-
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("enroll: POST %s: %w", cfg.EnrollEndpoint, err)
+		return nil, fmt.Errorf("enroll: POST %s: %w", endpoint, err)
 	}
 	defer resp.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("enroll: endpoint returned %s: %s", resp.Status, bytes.TrimSpace(body))
+		return nil, fmt.Errorf("enroll: %s returned %s: %s", endpoint, resp.Status, bytes.TrimSpace(respBody))
 	}
-
-	var er enrollResponse
-	if err := json.Unmarshal(body, &er); err != nil {
+	var cr certResponse
+	if err := json.Unmarshal(respBody, &cr); err != nil {
 		return nil, fmt.Errorf("enroll: decode response: %w", err)
 	}
-	if er.CertPEM == "" {
+	if cr.CertPEM == "" {
 		return nil, fmt.Errorf("enroll: response contained no certificate")
 	}
-	return []byte(er.CertPEM), nil
+	return []byte(cr.CertPEM), nil
 }
 
 func agentID() string {
@@ -149,7 +263,7 @@ func fileExists(p string) bool {
 	return err == nil
 }
 
-func readIdentity(certPath, keyPath, caPath string) (cert, key, ca []byte, err error) {
+func readPEMs(certPath, keyPath, caPath string) (cert, key, ca []byte, err error) {
 	if cert, err = os.ReadFile(certPath); err != nil {
 		return
 	}

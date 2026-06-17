@@ -57,9 +57,13 @@ func main() {
 
 	// Build the sink before starting collection so an enrollment failure aborts
 	// immediately rather than buffering events with nowhere to ship them.
-	sinkName, deliver, err := buildSink(ctx, *dryRun, cfg)
+	sinkName, deliver, identity, err := buildSink(ctx, *dryRun, cfg)
 	if err != nil {
 		log.Fatalf("cannot initialize sink: %v", err)
+	}
+	if identity != nil {
+		log.Printf("client certificate valid until %s", identity.NotAfter().UTC().Format(time.RFC3339))
+		go renewalLoop(ctx, identity, cfg)
 	}
 
 	collector := auth.New(cfg.StateDir)
@@ -89,7 +93,7 @@ func main() {
 	consumerDone := make(chan struct{})
 	go func() {
 		defer close(consumerDone)
-		runSink(ctx, q, cfg, deliver, stopDrain)
+		runSink(ctx, q, cfg, deliver, stopDrain, stop)
 	}()
 
 	<-ctx.Done()
@@ -112,7 +116,7 @@ func main() {
 
 // buildSink returns the named delivery function the consumer drains into: a
 // stdout encoder under -dry-run, or the enrolled mTLS shipper otherwise.
-func buildSink(ctx context.Context, dryRun bool, cfg config.Config) (string, deliverFunc, error) {
+func buildSink(ctx context.Context, dryRun bool, cfg config.Config) (string, deliverFunc, *enroll.Identity, error) {
 	if dryRun {
 		enc := json.NewEncoder(os.Stdout)
 		return "stdout (dry-run)", func(_ context.Context, evs []collectors.Event) error {
@@ -122,21 +126,21 @@ func buildSink(ctx context.Context, dryRun bool, cfg config.Config) (string, del
 				}
 			}
 			return nil
-		}, nil
+		}, nil, nil
 	}
 
-	tlsConf, err := enroll.EnsureIdentity(ctx, cfg)
+	id, err := enroll.EnsureIdentity(ctx, cfg)
 	if err != nil {
-		return "", nil, err
+		return "", nil, nil, err
 	}
 	host, _ := os.Hostname()
-	shipper := transport.New(cfg.IngestEndpoint, host, tlsConf)
-	return "mTLS " + cfg.IngestEndpoint, shipper.Send, nil
+	shipper := transport.New(cfg.IngestEndpoint, host, id.TLSConfig())
+	return "mTLS " + cfg.IngestEndpoint, shipper.Send, id, nil
 }
 
 // runSink drains the buffer into deliver on a fixed cadence, acking delivered
 // batches, dead-lettering poison ones, and backing off on retryable failures.
-func runSink(ctx context.Context, q *buffer.Queue, cfg config.Config, deliver deliverFunc, stopDrain <-chan struct{}) {
+func runSink(ctx context.Context, q *buffer.Queue, cfg config.Config, deliver deliverFunc, stopDrain <-chan struct{}, halt func()) {
 	ticker := time.NewTicker(cfg.FlushInterval)
 	defer ticker.Stop()
 	attempt := 0
@@ -173,6 +177,10 @@ func runSink(ctx context.Context, q *buffer.Queue, cfg config.Config, deliver de
 					log.Printf("sink: ack failed: %v", e)
 				}
 				attempt = 0
+			case errors.Is(err, transport.ErrUnauthorized):
+				log.Printf("sink: platform rejected our identity (%v) — halting shipping; %d event(s) kept buffered, re-onboard to resume", err, q.Len())
+				halt()
+				return
 			case errors.Is(err, transport.ErrPermanent):
 				log.Printf("sink: dead-lettering %d poison event(s): %v", batch.Len(), err)
 				if e := q.DeadLetter(batch); e != nil {
@@ -230,5 +238,32 @@ func waitOrStop(ctx context.Context, stopDrain <-chan struct{}, d time.Duration)
 	case <-t.C:
 	case <-stopDrain:
 	case <-ctx.Done():
+	}
+}
+
+// renewalLoop renews the client certificate before it expires: once at startup,
+// then on a fixed interval. Failures are logged and retried on the next tick;
+// the cert stays valid until then.
+func renewalLoop(ctx context.Context, id *enroll.Identity, cfg config.Config) {
+	check := func() {
+		if !id.NeedsRenewal(cfg.RenewBefore) {
+			return
+		}
+		if err := id.Renew(ctx, cfg); err != nil {
+			log.Printf("cert: renewal failed (will retry): %v", err)
+			return
+		}
+		log.Printf("cert: renewed; valid until %s", id.NotAfter().UTC().Format(time.RFC3339))
+	}
+	check()
+	ticker := time.NewTicker(cfg.RenewCheckInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			check()
+		}
 	}
 }

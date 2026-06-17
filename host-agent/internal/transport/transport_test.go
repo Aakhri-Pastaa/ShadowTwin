@@ -132,7 +132,9 @@ func TestSendClassifiesResponses(t *testing.T) {
 		{"429", http.StatusTooManyRequests, ErrRetryable},
 		{"408", http.StatusRequestTimeout, ErrRetryable},
 		{"400", http.StatusBadRequest, ErrPermanent},
-		{"403", http.StatusForbidden, ErrPermanent},
+		{"404", http.StatusNotFound, ErrPermanent},
+		{"401", http.StatusUnauthorized, ErrUnauthorized},
+		{"403", http.StatusForbidden, ErrUnauthorized},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
