@@ -23,9 +23,8 @@ collector: systemd-journald authentication events.
     plus one-time token+CSR certificate enrollment (the private key never leaves
     the host), with a dev-only mock platform to test against. Wire contract:
     ADR-0003.
-- 🚧 **Slice 3 — Onboarding + certificate lifecycle** *(in progress on
-  `feat/host-agent-cert-lifecycle`)*:
-  - 🚧 **PR-1 — direct addressing + cert lifecycle**: `mock-platform -host` for
+- 🚧 **Slice 3 — Onboarding + certificate lifecycle**:
+  - ✅ **PR-1 — direct addressing + cert lifecycle**: `mock-platform -host` for
     no-tunnel mTLS; certificate **renewal** (mTLS `/renew` before expiry) and
     **revocation** (platform denylist; a revoked agent halts and keeps its
     buffered events). See ADR-0004.
