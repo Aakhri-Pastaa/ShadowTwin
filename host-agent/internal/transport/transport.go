@@ -25,6 +25,10 @@ import (
 var (
 	ErrRetryable = errors.New("transport: retryable failure")
 	ErrPermanent = errors.New("transport: permanent failure")
+	// ErrUnauthorized is the platform rejecting the agent's identity (e.g. the
+	// cert was revoked). It is about *who* we are, not the batch content, so the
+	// caller must not discard events — it should halt and keep them buffered.
+	ErrUnauthorized = errors.New("transport: unauthorized (identity rejected)")
 )
 
 const schemaVersion = 1
@@ -110,6 +114,9 @@ func (s *Shipper) Send(ctx context.Context, events []collectors.Event) error {
 	switch {
 	case resp.StatusCode >= 200 && resp.StatusCode < 300:
 		return nil
+	case resp.StatusCode == http.StatusUnauthorized,
+		resp.StatusCode == http.StatusForbidden:
+		return fmt.Errorf("%w: ingest returned %s", ErrUnauthorized, resp.Status)
 	case resp.StatusCode == http.StatusRequestTimeout,
 		resp.StatusCode == http.StatusTooManyRequests,
 		resp.StatusCode >= 500:

@@ -42,6 +42,13 @@ type Config struct {
 	// BackoffBase and BackoffCap bound the shipper's retry backoff.
 	BackoffBase time.Duration
 	BackoffCap  time.Duration
+
+	// RenewEndpoint is the platform URL the agent re-CSRs to (over its current
+	// mTLS identity) before its certificate expires. RenewBefore is the lead time
+	// that triggers renewal; RenewCheckInterval is how often the agent checks.
+	RenewEndpoint      string
+	RenewBefore        time.Duration
+	RenewCheckInterval time.Duration
 }
 
 // Default returns the configuration with StateDir resolved to ~/.host-agent
@@ -50,17 +57,20 @@ type Config struct {
 func Default() Config {
 	state := defaultStateDir()
 	return Config{
-		StateDir:       state,
-		QueueDir:       filepath.Join(state, "queue"),
-		MaxQueueEvents: 100_000,
-		MaxQueueBytes:  256 << 20, // 256 MiB
-		BatchSize:      256,
-		FlushInterval:  time.Second,
-		IngestEndpoint: "https://localhost:8443/ingest",
-		EnrollEndpoint: "https://localhost:8443/enroll",
-		CertDir:        filepath.Join(state, "certs"),
-		BackoffBase:    time.Second,
-		BackoffCap:     time.Minute,
+		StateDir:           state,
+		QueueDir:           filepath.Join(state, "queue"),
+		MaxQueueEvents:     100_000,
+		MaxQueueBytes:      256 << 20, // 256 MiB
+		BatchSize:          256,
+		FlushInterval:      time.Second,
+		IngestEndpoint:     "https://localhost:8443/ingest",
+		EnrollEndpoint:     "https://localhost:8443/enroll",
+		CertDir:            filepath.Join(state, "certs"),
+		BackoffBase:        time.Second,
+		BackoffCap:         time.Minute,
+		RenewEndpoint:      "https://localhost:8443/renew",
+		RenewBefore:        30 * 24 * time.Hour,
+		RenewCheckInterval: 6 * time.Hour,
 	}
 }
 
@@ -102,6 +112,9 @@ func Load() Config {
 	}
 	if v := os.Getenv("AGENT_ENROLL_TOKEN"); v != "" {
 		c.EnrollToken = v
+	}
+	if v := os.Getenv("AGENT_RENEW_ENDPOINT"); v != "" {
+		c.RenewEndpoint = v
 	}
 	return c
 }

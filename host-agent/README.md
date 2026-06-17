@@ -49,12 +49,14 @@ collector: systemd-journald authentication events.
 - Ships batches from the buffer to the platform over **mutual TLS**
   (`internal/transport`): TLS 1.3, the platform CA pinned (not the system trust
   store), gzip-compressed. A batch is deleted only after the platform acks it
-  (at-least-once); 4xx responses are dead-lettered and 5xx/network failures are
-  retried with exponential backoff + jitter. Operational logs go to **stderr**.
-- **Enrolls** on first run (`internal/enroll`): generates an ECDSA key locally
-  (the private key never leaves the host), exchanges a CSR + one-time token for a
-  client certificate, and stores it under `~/.host-agent/certs`; later runs reuse
-  it. `-dry-run` skips all of this and prints events to stdout instead.
+  (at-least-once); `400` is dead-lettered, `5xx`/network are retried with
+  exponential backoff + jitter, and `401/403` (e.g. a **revoked** agent) halts
+  shipping while keeping events buffered. Operational logs go to **stderr**.
+- **Enrolls & renews** (`internal/enroll`): on first run it generates an ECDSA
+  key locally (the private key never leaves the host) and trades a CSR + one-time
+  token for a client certificate under `~/.host-agent/certs`. It then renews the
+  cert before expiry over its current mTLS identity (no token), and re-enrolls if
+  it finds an expired cert. `-dry-run` skips all of this and prints to stdout.
 - Resumes after a restart from journald's cursor, persisted to
   `~/.host-agent/auth.journald.cursor`. No naive file tailing.
 - Every event carries a generated UUID so downstream retries can dedupe.
@@ -125,7 +127,15 @@ go run ./cmd/agent
 
 The agent generates its key locally, enrolls (CSR + token → client cert under
 `~/.host-agent/certs`), then ships batches over mTLS; the mock logs each
-`/ingest`. See `docs/adr/0003-host-agent-telemetry-transport.md` for the contract.
+`/ingest`. It renews the cert before expiry automatically, and if the platform
+revokes it (`curl -X POST .../revoke -d '{"agent_id":"<host>"}'`) the agent halts
+and keeps its buffered events for re-onboarding.
+
+**Across two machines (no tunnel):** start the mock with `-host <server-ip-or-dns>`
+(so its TLS cert is valid for that address), copy its `mock-ca.crt` to the
+agent's `certs/ca.crt` (or fetch `GET /ca`), and set the agent's endpoints to
+`https://<server>:8443/...`. The agent connects directly — no SSH tunnel.
+Contract: `docs/adr/0003` + `docs/adr/0004`.
 
 ## Trigger a real auth event
 

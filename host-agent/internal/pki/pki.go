@@ -39,6 +39,24 @@ func MarshalKeyPEM(key *ecdsa.PrivateKey) ([]byte, error) {
 	return pem.EncodeToMemory(&pem.Block{Type: pemTypeKey, Bytes: der}), nil
 }
 
+// ParseKeyPEM decodes a PKCS#8 PEM private key (used to build renewal CSRs from
+// the key already on disk).
+func ParseKeyPEM(p []byte) (*ecdsa.PrivateKey, error) {
+	blk, _ := pem.Decode(p)
+	if blk == nil {
+		return nil, fmt.Errorf("pki: no PEM block in key")
+	}
+	k, err := x509.ParsePKCS8PrivateKey(blk.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("pki: parse key: %w", err)
+	}
+	key, ok := k.(*ecdsa.PrivateKey)
+	if !ok {
+		return nil, fmt.Errorf("pki: key is not ECDSA")
+	}
+	return key, nil
+}
+
 // MarshalCSRPEM builds a PEM-encoded certificate signing request for the given
 // key and common name.
 func MarshalCSRPEM(key *ecdsa.PrivateKey, commonName string) ([]byte, error) {

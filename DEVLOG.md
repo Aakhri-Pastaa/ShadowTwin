@@ -53,8 +53,10 @@ are not started yet.
 | Host agent: `auth.journald` collector | ✅ | Drives `journalctl -o json`, cursor-resumes, log-and-skip on bad input |
 | Host agent: durable buffer | ✅ | Crash-safe spool, at-least-once, bounded, dead-letters poison |
 | Host agent: mTLS shipper | ✅ | Batched, gzip, TLS 1.3, pinned CA, retry+backoff |
-| Host agent: enrollment | ✅ | Token + CSR; private key never leaves the host |
-| Dev mock platform | ✅ | `cmd/mock-platform` implements `/enroll` + `/ingest` (dev only) |
+| Host agent: enrollment + renewal | ✅ | Token+CSR bootstrap; auto-renew over mTLS before expiry; key never leaves the host |
+| Host agent: revocation handling | ✅ | Platform `403` → agent halts and keeps events buffered (nothing discarded) |
+| Host agent: direct addressing | ✅ | `mock-platform -host` SANs → agents connect to the platform's real address (no tunnel) |
+| Dev mock platform | ✅ | `cmd/mock-platform`: `/ca`, `/enroll`, `/renew`, `/ingest`, `/revoke` (dev only) |
 | Real platform / ingest server | ⛔ | Not built; mock stands in. Contract in ADR-0003 |
 | Other components | ⛔ | graph / threat-intel / evaluator / attacker / defender / frontend |
 
@@ -215,22 +217,57 @@ CN), the queue drained to empty, clean shutdown.
 
 ---
 
+### 2026-06-17 — Host agent, Slice 3 / PR-1: certificate lifecycle + direct addressing (PR #5)
+
+**What.** No-tunnel direct addressing plus the certificate lifecycle deferred
+from PR-B: automatic renewal and revocation. Added `pki.ParseKeyPEM`, the
+`ErrUnauthorized` transport outcome, an `Identity` type that renews itself, and
+`/ca`, `/renew`, `/revoke` on the mock platform.
+
+**Why.**
+
+- *Direct addressing (`mock-platform -host`)*: real agents reach the platform at
+  its actual address, not `localhost`; the dev cert needs that name in its SAN so
+  TLS verification passes without an SSH tunnel.
+- *Renewal*: 90-day certs must rotate unattended.
+- *Revocation*: a decommissioned/compromised host must be cut off — and a revoked
+  agent must **not discard** the telemetry it already holds.
+
+**How.** `Identity` (in `internal/enroll`) holds the key + current cert and serves
+it via `GetClientCertificate`, so renewal swaps the cert with no restart. Renewal
+uses `POST /renew` authenticated by the *current* mTLS cert (no token), checked at
+startup and every 6h, triggering within 30 days of expiry; an already-expired cert
+falls back to token re-enrollment. Revocation is a platform-side denylist
+returning `403`; the agent maps `401/403` to a distinct `ErrUnauthorized` and
+**halts shipping while keeping events buffered** (vs `400` poison → dead-letter,
+`5xx`/network → retry).
+
+**Verification.** Unit tests (incl. `-race`): key PEM round-trip, CSR→client-cert
+signing, multi-SAN server certs, transport classification (`401/403`→unauthorized),
+renewal reissues a new serial, `NeedsRenewal` windows, enroll-then-reuse. Live, no
+tunnel: agent connected to `https://127.0.0.2:8443` (non-localhost SAN), fetched
+`GET /ca`, enrolled, shipped a real failed `sudo`; after `POST /revoke` the next
+ship got `403` and the agent halted with 2 events **kept buffered**.
+
+**Refs.** PR #5. ADR: `docs/adr/0004-host-agent-certificate-lifecycle.md`
+(extends ADR-0003 with `/ca`, `/renew`, `/revoke`).
+
 ## Upcoming / backlog
 
-Not started; rough priority order for the host agent and the wider platform:
+Rough priority order for the host agent and the wider platform:
 
-1. **Certificate lifecycle** — renewal before expiry and revocation handling
-   (deliberately deferred from PR-B).
+1. **One-command onboarding** — *in progress (Slice 3 / PR-2)*: an `agent install`
+   subcommand that copies the binary, creates an unprivileged service user, writes
+   a hardened systemd unit, enrolls, and starts — no external dependencies.
 2. **A second collector** — e.g. process/network via osquery, or auditd — to
    prove the `Collector` contract generalizes beyond journald.
-3. **Packaging** — systemd unit, a dedicated unprivileged service user in the
-   `systemd-journal` group, and a single-binary release/install.
-4. **The real platform ingest service** — implement the ADR-0003 contract
+3. **The real platform ingest service** — implement the ADR-0003/0004 contract
    (replacing `cmd/mock-platform`), then the environment graph (Neo4j) it feeds.
-5. **Hardening** — tamper protection, secure auto-update, config integrity.
+4. **Hardening** — tamper protection, secure auto-update, config integrity.
 
 ## Decision index (ADRs)
 
 - ADR-0001 — Record architecture decisions.
 - ADR-0002 — Build a custom Go host agent instead of forking Wazuh.
 - ADR-0003 — Host-agent telemetry transport: mTLS HTTP + token/CSR enrollment.
+- ADR-0004 — Host-agent certificate lifecycle: renewal and revocation.
