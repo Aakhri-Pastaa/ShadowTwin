@@ -23,9 +23,17 @@ collector: systemd-journald authentication events.
     plus one-time token+CSR certificate enrollment (the private key never leaves
     the host), with a dev-only mock platform to test against. Wire contract:
     ADR-0003.
+- 🚧 **Slice 3 — Onboarding + certificate lifecycle** *(in progress on
+  `feat/host-agent-cert-lifecycle`)*:
+  - 🚧 **PR-1 — direct addressing + cert lifecycle**: `mock-platform -host` for
+    no-tunnel mTLS; certificate **renewal** (mTLS `/renew` before expiry) and
+    **revocation** (platform denylist; a revoked agent halts and keeps its
+    buffered events). See ADR-0004.
+  - ⬜ **PR-2 — one-command onboarding**: an `agent install` subcommand that
+    copies the binary, creates an unprivileged service user, writes a hardened
+    systemd unit, enrolls, and starts — no external dependencies.
 - ⬜ **Later** — more collectors (osquery process/network, auditd,
-  Windows/Sysmon), packaging (systemd unit, dedicated service user,
-  single-binary install), and hardening (tamper protection, secure auto-update).
+  Windows/Sysmon) and hardening (tamper protection, secure auto-update).
 
 ## What it does today
 
