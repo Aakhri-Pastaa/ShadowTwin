@@ -19,9 +19,10 @@ collector: systemd-journald authentication events.
   - ✅ **PR-A — durable disk buffer**: a crash-safe on-disk queue between the
     collector and the sink (collector → buffer → drain), so events survive
     restarts and platform outages.
-  - **PR-B — mTLS transport** (batched, retrying shipper) + one-time certificate
-    **enrollment** (token + CSR; the private key never leaves the host), with a
-    dev-only mock platform to test against. Wire contract: `docs/adr/0003-*`.
+  - 🚧 **PR-B — mTLS transport + enrollment** *(in progress on
+    `feat/host-agent-transport`)*: a batched, retrying mTLS shipper plus one-time
+    token+CSR certificate enrollment (the private key never leaves the host),
+    with a dev-only mock platform to test against. Wire contract: ADR-0003.
 - ⬜ **Later** — more collectors (osquery process/network, auditd,
   Windows/Sysmon), packaging (systemd unit, dedicated service user,
   single-binary install), and hardening (tamper protection, secure auto-update).
