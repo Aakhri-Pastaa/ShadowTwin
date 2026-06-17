@@ -23,14 +23,15 @@ collector: systemd-journald authentication events.
     plus one-time token+CSR certificate enrollment (the private key never leaves
     the host), with a dev-only mock platform to test against. Wire contract:
     ADR-0003.
-- 🚧 **Slice 3 — Onboarding + certificate lifecycle**:
+- ✅ **Slice 3 — Onboarding + certificate lifecycle**:
   - ✅ **PR-1 — direct addressing + cert lifecycle**: `mock-platform -host` for
     no-tunnel mTLS; certificate **renewal** (mTLS `/renew` before expiry) and
     **revocation** (platform denylist; a revoked agent halts and keeps its
     buffered events). See ADR-0004.
-  - ⬜ **PR-2 — one-command onboarding**: an `agent install` subcommand that
-    copies the binary, creates an unprivileged service user, writes a hardened
-    systemd unit, enrolls, and starts — no external dependencies.
+  - ✅ **PR-2 — one-command onboarding**: an `agent install` subcommand that copies
+    the binary, creates an unprivileged service user, writes a hardened systemd
+    unit, enrolls, and starts — plus `uninstall`, `status`, and `doctor`. No
+    external dependencies.
 - ⬜ **Later** — more collectors (osquery process/network, auditd,
   Windows/Sysmon) and hardening (tamper protection, secure auto-update).
 
@@ -135,6 +136,32 @@ and keeps its buffered events for re-onboarding.
 agent's `certs/ca.crt` (or fetch `GET /ca`), and set the agent's endpoints to
 `https://<server>:8443/...`. The agent connects directly — no SSH tunnel.
 Contract: `docs/adr/0003` + `docs/adr/0004`.
+
+## One-command install (systemd)
+
+In production the agent is a single static binary onboarded with one command. It
+uses only base-OS tools (`systemctl`, `useradd`/`usermod`) — never a package
+manager, and nothing to compile on the target:
+
+```
+sudo shadowtwin-agent install --server https://<platform>:8443 --token <enroll-token>
+```
+
+This creates an unprivileged `shadowtwin` user (in the `systemd-journal` group so
+it reads the journal without root), installs the binary to `/usr/local/bin`,
+fetches the platform CA, writes a **hardened** systemd unit plus
+`/etc/shadowtwin-agent/agent.env` (token at `0600`), enrolls, starts the service,
+and **verifies connectivity + enrollment before returning**. Pass `--ca <file>`
+to pin an out-of-band CA, or `--dry-run` to print the plan and the unit without
+changing anything.
+
+Manage it with:
+
+```
+shadowtwin-agent status                     # binary / service / cert expiry / queue depth
+shadowtwin-agent doctor                      # diagnostic checks (exits non-zero on failure)
+sudo shadowtwin-agent uninstall [--purge]    # stop & remove (--purge also drops state + user)
+```
 
 ## Trigger a real auth event
 

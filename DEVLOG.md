@@ -56,6 +56,7 @@ are not started yet.
 | Host agent: enrollment + renewal | ✅ | Token+CSR bootstrap; auto-renew over mTLS before expiry; key never leaves the host |
 | Host agent: revocation handling | ✅ | Platform `403` → agent halts and keeps events buffered (nothing discarded) |
 | Host agent: direct addressing | ✅ | `mock-platform -host` SANs → agents connect to the platform's real address (no tunnel) |
+| Host agent: one-command onboarding | ✅ | `agent install` (+ `uninstall`/`status`/`doctor`): unprivileged user, hardened systemd unit, enroll, verify |
 | Dev mock platform | ✅ | `cmd/mock-platform`: `/ca`, `/enroll`, `/renew`, `/ingest`, `/revoke` (dev only) |
 | Real platform / ingest server | ⛔ | Not built; mock stands in. Contract in ADR-0003 |
 | Other components | ⛔ | graph / threat-intel / evaluator / attacker / defender / frontend |
@@ -252,18 +253,45 @@ ship got `403` and the agent halted with 2 events **kept buffered**.
 **Refs.** PR #5. ADR: `docs/adr/0004-host-agent-certificate-lifecycle.md`
 (extends ADR-0003 with `/ca`, `/renew`, `/revoke`).
 
+### 2026-06-17 — Host agent, Slice 3 / PR-2: one-command onboarding (PR #6)
+
+**What.** `agent install` plus `uninstall`, `status`, and `doctor` — the binary
+onboards itself as a hardened systemd service.
+
+**Why.** ADR-0002's promise: a single static binary, installed in one command,
+with nothing to compile and no libraries to add on the target. We had the binary;
+this is the install UX.
+
+**How.** `main` becomes a subcommand dispatcher (`run` stays the default and the
+ExecStart). `install` (`cmd/agent/onboard.go`) creates an unprivileged
+`shadowtwin` user in the `systemd-journal` group (journal read without root),
+copies the running binary to `/usr/local/bin`, fetches the platform CA (a file or
+`GET /ca`), writes `/etc/shadowtwin-agent/agent.env` (token `0600`) and a hardened
+unit (`NoNewPrivileges`, `ProtectSystem=strict`, empty `CapabilityBoundingSet`,
+`ReadWritePaths` = state dir only, …), enables+starts the service, then verifies
+connectivity (CA-pinned TLS to the platform) and enrollment before returning. It
+uses only base-OS tools (`systemctl`, `useradd`, `usermod`) — no package manager.
+`uninstall` (+`--purge`), `status`, and `doctor` round it out; `--dry-run`
+previews the plan and unit.
+
+**Verification.** `gofmt`/`vet`/`build`/`test` clean. Unit tests cover the pure
+parts (unit + env rendering, endpoint derivation, CA fetch, cert parsing,
+env-file parsing). Demonstrated safely with `install --dry-run` (full plan +
+hardened unit, no changes), `status`, and `doctor`. A real `sudo install` needs
+root + systemd on the target; the side-effecting steps shell out to standard
+tools.
+
+**Refs.** PR #6.
+
 ## Upcoming / backlog
 
 Rough priority order for the host agent and the wider platform:
 
-1. **One-command onboarding** — *in progress (Slice 3 / PR-2)*: an `agent install`
-   subcommand that copies the binary, creates an unprivileged service user, writes
-   a hardened systemd unit, enrolls, and starts — no external dependencies.
-2. **A second collector** — e.g. process/network via osquery, or auditd — to
+1. **A second collector** — e.g. process/network via osquery, or auditd — to
    prove the `Collector` contract generalizes beyond journald.
-3. **The real platform ingest service** — implement the ADR-0003/0004 contract
+2. **The real platform ingest service** — implement the ADR-0003/0004 contract
    (replacing `cmd/mock-platform`), then the environment graph (Neo4j) it feeds.
-4. **Hardening** — tamper protection, secure auto-update, config integrity.
+3. **Hardening** — tamper protection, secure auto-update, config integrity.
 
 ## Decision index (ADRs)
 
