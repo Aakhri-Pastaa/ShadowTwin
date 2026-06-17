@@ -15,6 +15,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -31,8 +32,34 @@ import (
 type deliverFunc func(context.Context, []collectors.Event) error
 
 func main() {
-	dryRun := flag.Bool("dry-run", false, "print events to stdout instead of shipping them to the platform over mTLS")
-	flag.Parse()
+	args := os.Args[1:]
+	cmd := ""
+	if len(args) > 0 && !strings.HasPrefix(args[0], "-") {
+		cmd, args = args[0], args[1:]
+	}
+	switch cmd {
+	case "", "run":
+		runAgent(args)
+	case "install":
+		runInstall(args)
+	case "uninstall":
+		runUninstall(args)
+	case "status":
+		runStatus(args)
+	case "doctor":
+		runDoctor(args)
+	default:
+		fmt.Fprintf(os.Stderr, "unknown command %q (use: run | install | uninstall | status | doctor)\n", cmd)
+		os.Exit(2)
+	}
+}
+
+// runAgent runs the collector -> buffer -> sink pipeline. It is the default
+// command and what the systemd unit's ExecStart invokes.
+func runAgent(args []string) {
+	fs := flag.NewFlagSet("agent", flag.ExitOnError)
+	dryRun := fs.Bool("dry-run", false, "print events to stdout instead of shipping them to the platform over mTLS")
+	_ = fs.Parse(args)
 
 	log.SetOutput(os.Stderr)
 	log.SetFlags(log.LstdFlags | log.LUTC)
