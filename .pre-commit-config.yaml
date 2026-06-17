@@ -25,4 +25,15 @@ repos:
     rev: v0.5.1
     hooks:
       - id: go-fmt
+
+  # go vet needs module context, but the module lives in host-agent/, not the
+  # repo root. Run it there via a local hook so it mirrors CI exactly
+  # (host-agent.yml runs `go vet ./...` with working-directory: host-agent).
+  - repo: local
+    hooks:
       - id: go-vet
+        name: go vet (host-agent module)
+        entry: bash -c 'cd host-agent && go vet ./...'
+        language: system
+        files: ^host-agent/.*\.go$
+        pass_filenames: false
