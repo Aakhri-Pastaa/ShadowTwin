@@ -15,14 +15,14 @@ collector: systemd-journald authentication events.
 - ✅ **Slice 1 — Foundation + auth collector**: the `Collector` / `Event`
   contract, UUID-stamped events, the `auth.journald` collector, signal-driven
   lifecycle, and config (events went straight to stdout).
-- 🚧 **Slice 2 — Shipping spine** — make events actually reach the platform:
+- ✅ **Slice 2 — Shipping spine** — events now reach the platform:
   - ✅ **PR-A — durable disk buffer**: a crash-safe on-disk queue between the
     collector and the sink (collector → buffer → drain), so events survive
     restarts and platform outages.
-  - 🚧 **PR-B — mTLS transport + enrollment** *(in progress on
-    `feat/host-agent-transport`)*: a batched, retrying mTLS shipper plus one-time
-    token+CSR certificate enrollment (the private key never leaves the host),
-    with a dev-only mock platform to test against. Wire contract: ADR-0003.
+  - ✅ **PR-B — mTLS transport + enrollment**: a batched, retrying mTLS shipper
+    plus one-time token+CSR certificate enrollment (the private key never leaves
+    the host), with a dev-only mock platform to test against. Wire contract:
+    ADR-0003.
 - ⬜ **Later** — more collectors (osquery process/network, auditd,
   Windows/Sysmon), packaging (systemd unit, dedicated service user,
   single-binary install), and hardening (tamper protection, secure auto-update).
