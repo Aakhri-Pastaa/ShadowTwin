@@ -38,9 +38,15 @@ collector: systemd-journald authentication events.
   (`internal/buffer`, spooled under `~/.host-agent/queue`) before anything reads
   it, so a process crash or a stalled sink never drops telemetry. The buffer is
   bounded (oldest dropped when full) and dead-letters events it can't parse.
-- Drains the buffer to **stdout** as newline-delimited JSON, deleting each batch
-  only after it is emitted (at-least-once). Operational logs go to **stderr**, so
-  the two never mix. The next slice swaps this stdout sink for the mTLS shipper.
+- Ships batches from the buffer to the platform over **mutual TLS**
+  (`internal/transport`): TLS 1.3, the platform CA pinned (not the system trust
+  store), gzip-compressed. A batch is deleted only after the platform acks it
+  (at-least-once); 4xx responses are dead-lettered and 5xx/network failures are
+  retried with exponential backoff + jitter. Operational logs go to **stderr**.
+- **Enrolls** on first run (`internal/enroll`): generates an ECDSA key locally
+  (the private key never leaves the host), exchanges a CSR + one-time token for a
+  client certificate, and stores it under `~/.host-agent/certs`; later runs reuse
+  it. `-dry-run` skips all of this and prints events to stdout instead.
 - Resumes after a restart from journald's cursor, persisted to
   `~/.host-agent/auth.journald.cursor`. No naive file tailing.
 - Every event carries a generated UUID so downstream retries can dedupe.
@@ -48,13 +54,17 @@ collector: systemd-journald authentication events.
 ## Architecture (one-way pipeline)
 
 ```
-journald ─(journalctl -o json)─▶ auth collector ─Event─▶ [ disk buffer ] ─▶ stdout (JSON)
-                                              └─cursor─▶ ~/.host-agent/    (FIFO; drained in
-                                                                           batches, acked after emit)
+journald ─▶ auth collector ─▶ [ disk buffer ] ─▶ [ mTLS shipper ] ─▶ platform /ingest
+                 └─cursor─▶ ~/.host-agent/       FIFO, acked after    batched, gzip,
+                                                 platform ack          retry + backoff
+
+enrollment: generate key on host ─▶ CSR + one-time token ─▶ platform /enroll ─▶ client cert
 ```
 
-The agent only ever **sends**. It has no inbound control channel and accepts no
-remote commands — a deliberate security choice.
+The agent only ever **sends** — no inbound control channel, no remote commands,
+so it never becomes an attack surface on a monitored host. Mutual TLS means the
+platform trusts only enrolled agents, and the agent (pinning the platform CA)
+ships only to the real platform.
 
 ## Build
 
@@ -76,12 +86,38 @@ Debian/Ubuntu, which systemd grants journal read access via ACLs). Confirm with:
 journalctl -n1 SYSLOG_FACILITY=10 >/dev/null && echo "can read authpriv"
 ```
 
-Then run the agent (events on stdout, logs on stderr):
+The simplest run is `-dry-run`, which skips enrollment and prints events to
+stdout (logs go to stderr, so the two never mix):
 
 ```
-go run ./cmd/agent          # or ./bin/agent after building
-go run ./cmd/agent 2>/dev/null   # to watch only the event stream
+go run ./cmd/agent -dry-run             # buffer -> stdout, no certs needed
+go run ./cmd/agent -dry-run 2>/dev/null # watch only the event stream
 ```
+
+### Ship over mTLS (against the dev mock platform)
+
+The default (no `-dry-run`) enrolls and ships over mTLS, which needs a platform.
+Until the real one exists, `cmd/mock-platform` stands in (dev only). In one
+terminal:
+
+```
+go run ./cmd/mock-platform -token demo-token   # writes ./mock-ca.crt, listens on :8443
+```
+
+In another, trust its CA, point the agent at it, and run:
+
+```
+mkdir -p ~/.host-agent/certs
+cp mock-ca.crt ~/.host-agent/certs/ca.crt
+export AGENT_ENROLL_ENDPOINT=https://localhost:8443/enroll
+export INGEST_ENDPOINT=https://localhost:8443/ingest
+export AGENT_ENROLL_TOKEN=demo-token
+go run ./cmd/agent
+```
+
+The agent generates its key locally, enrolls (CSR + token → client cert under
+`~/.host-agent/certs`), then ships batches over mTLS; the mock logs each
+`/ingest`. See `docs/adr/0003-host-agent-telemetry-transport.md` for the contract.
 
 ## Trigger a real auth event
 
@@ -93,8 +129,9 @@ sudo -k                                 # forget cached credentials
 echo 'wrong-password' | sudo -S true    # one guaranteed auth failure
 ```
 
-Within about a second the agent prints a JSON event on stdout, e.g.
-(pretty-printed):
+Within about a second the agent captures it. Under `-dry-run` it prints the JSON
+event on stdout (pretty-printed here); when shipping over mTLS it appears in the
+platform's `/ingest` log instead:
 
 ```json
 {
@@ -130,11 +167,11 @@ cd host-agent
 go test ./...
 ```
 
-Tests use journal fixtures and a fake reader — no root and no live journald
-required.
+Tests cover the parser, the buffer, the mTLS transport (against an in-process TLS
+server), and enrollment — no root, no live journald, no network beyond loopback.
 
 ## Beyond the current slice
 
-See **Status & roadmap** above for what's next and what's deferred. The
-`internal/buffer`, `internal/transport`, and `internal/enroll` packages are
-placeholders marking where the shipping spine lands.
+See **Status & roadmap** above for what's next and what's deferred — notably
+certificate renewal/revocation, more collectors, and packaging. The real
+platform ingest endpoint doesn't exist yet; `cmd/mock-platform` stands in for it.
