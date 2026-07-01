@@ -1,5 +1,14 @@
 # ShadowTwin — Development Log
 
+> **Pivot note (2026):** the project pivoted from the custom Go host agent
+> documented in the entries below to a **Wazuh-based** telemetry/detection
+> source, tools-first agents, and an advisory-only (human-in-the-loop)
+> Defender. The Go agent is not deleted — it's archived at
+> [`go-agent-v0/`](go-agent-v0/) as a complete, tested reference and as the
+> project's starting point. Everything below is accurate **history**, not
+> the current path; see the root [README](README.md) and
+> [`docs/architecture.md`](docs/architecture.md) for the current design.
+
 A running, human-readable record of how this project was built: what we did, why
 we did it, how it works, and how each step was verified. It exists so either of
 us (or a future contributor) can **backtrack in detail** without reconstructing

@@ -17,7 +17,8 @@ to scale cleanly if anyone else joins later.
    pre-commit install
    ```
 3. Each component has its own README with language-specific setup
-   (Go toolchain for host-agent, Python venv for the agents, npm for frontend).
+   (Go toolchain for go-agent-v0 — archived, Python venv for the agents, npm
+   for frontend).
 
 ## Day-to-day workflow
 
@@ -26,7 +27,7 @@ to scale cleanly if anyone else joins later.
 3. Do the work (Claude Code or by hand). Keep PRs small — one component or
    one feature, not "phase 4 in one PR."
 4. Commit using Conventional Commits:
-   - `feat: add auth log collector to host agent`
+   - `feat: add ingestor mapping for a new Wazuh rule group`
    - `fix: correct CVE-to-CPE join in graph loader`
    - `docs: add ADR for Neo4j choice`
    - `chore:`, `refactor:`, `test:` as appropriate.

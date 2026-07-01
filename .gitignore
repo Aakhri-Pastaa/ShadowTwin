@@ -6,8 +6,8 @@
 *.key
 *.crt
 
-# --- Go (host-agent) -----------------------------------------------------
-/host-agent/bin/
+# --- Go (go-agent-v0, archived) -------------------------------------------
+/go-agent-v0/bin/
 *.exe
 *.test
 *.out

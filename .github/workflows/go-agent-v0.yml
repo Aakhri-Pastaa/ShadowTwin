@@ -1,20 +1,20 @@
-name: Host agent CI
+name: go-agent-v0 CI (archived)
 
 on:
   pull_request:
     paths:
-      - 'host-agent/**'
+      - 'go-agent-v0/**'
   push:
     branches: [main]
     paths:
-      - 'host-agent/**'
+      - 'go-agent-v0/**'
 
 jobs:
   build-test:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: host-agent
+        working-directory: go-agent-v0
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5

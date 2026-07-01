@@ -1,8 +1,9 @@
 # ShadowTwin
 
-> A closed-loop, AI-orchestrated purple-team lab: attack → fix → re-attack to
-> prove the fix worked. Runs entirely against a bundled, deliberately
-> vulnerable sandbox — never against production or third-party systems.
+> A closed-loop purple-team lab: detect → advise → (human) fix → re-attack to
+> prove the fix worked. Tools-first, AI only where deterministic rules can't
+> do the job. Runs entirely against a bundled, deliberately vulnerable
+> sandbox — never against production or third-party systems.
 
 [![CI](https://github.com/ORG/REPO/actions/workflows/secret-scan.yml/badge.svg)](../../actions)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
@@ -10,11 +11,27 @@
 ## What this is
 
 Most AI security tooling stops at "found a vulnerability" or "exploited a
-vulnerability." This project closes the loop: an Evaluator agent triages
-telemetry, an Attacker agent validates exploitability against a sandboxed
-lab, and a Defender agent generates and applies a fix — then re-triggers
-the same attack to prove the fix actually closed the hole. See
-[`docs/architecture.md`](docs/architecture.md) for the full diagram.
+vulnerability." This project closes the loop, and does it **tools-first**:
+deterministic tools do the mechanical work (collection, detection,
+correlation, exploitation, scanning), and AI is reserved only for what rules
+can't do — ambiguous triage, cross-signal correlation, and explaining a
+finding in plain language.
+
+**Wazuh** is the telemetry and detection source: native multi-platform
+collection, its decoder/rule engine, MITRE ATT&CK mapping, vulnerability
+detection, and CIS benchmark assessment. An ingestor normalizes Wazuh alerts
+into a shared **PostgreSQL findings store**. An Evaluator agent triages
+findings that rules alone can't resolve. An Attacker agent validates
+exploitability against the bundled sandbox and attaches proof. A Defender
+agent produces a **recommended fix — advisory only**. A human reviews and
+applies it. The Attacker then re-runs to prove closure. There is **no
+auto-remediation**.
+
+Agents don't call each other directly — they coordinate through the shared
+findings store and a `status` field on each finding (e.g. `new` →
+`triaged` → `exploit_confirmed` → `fix_recommended` → `fix_applied` →
+`verified`). See [`docs/architecture.md`](docs/architecture.md) for the full
+diagram.
 
 This is a personal/portfolio open-source project built by two people, not
 a commercial product. See [SECURITY.md](SECURITY.md) for the responsible-use
@@ -24,23 +41,25 @@ policy before running the Attacker component against anything.
 
 | Component | What it does | Status |
 |---|---|---|
-| `host-agent/` | Telemetry collector, mTLS shipper | 🚧 in progress |
-| `graph/` | Environment/attack graph (Neo4j) | ⬜ planned |
-| `threat-intel/` | CVE/KEV/EPSS/ATT&CK ingestion | ⬜ planned |
-| `evaluator/` | ML pre-filter + LLM triage | ⬜ planned |
-| `attacker/` | LLM-orchestrated exploit validation | ⬜ planned |
-| `defender/` | Remediation + compliance mapping + re-verify | ⬜ planned |
-| `frontend/` | Dashboard: graph view, agent reasoning feed, reports | ⬜ planned |
+| Wazuh | Telemetry + detection: collection, decoder/rule engine, ATT&CK mapping, vuln + CIS assessment | 🚧 deployed |
+| `ingestor/` | Normalizes Wazuh alerts into the shared findings store | ⬜ planned |
+| PostgreSQL findings store | Shared state; agents coordinate via `status`, not direct calls | ⬜ planned |
+| `evaluator/` | Triage for the ambiguous residue rules can't resolve | ⬜ planned |
+| `attacker/` | Tool-driven exploit validation + proof, scope-locked to the sandbox | ⬜ planned |
+| `defender/` | Advisory-only remediation + compliance mapping; re-verify trigger | ⬜ planned |
+| `frontend/` | Dashboard: findings feed, agent reasoning, reports | ⬜ planned |
+| [`go-agent-v0/`](go-agent-v0/) | Original custom Go telemetry agent | ⏸ archived — superseded by Wazuh |
 
 ## Quickstart
 
-> TODO — fill in once `lab/docker-compose.yml` and `host-agent/` exist.
+> TODO — fill in once `lab/docker-compose.yml`, the Wazuh deployment, and
+> `ingestor/` exist.
 > Target shape:
 > ```
 > git clone <repo-url> && cd <repo-name>
 > cp .env.example .env   # fill in values
-> docker compose -f lab/docker-compose.yml up -d
-> cd host-agent && go run ./cmd/agent
+> docker compose -f lab/docker-compose.yml up -d   # sandbox + Wazuh + Postgres
+> cd ingestor && <run the ingestor>
 > ```
 
 ## Why open source
