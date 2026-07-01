@@ -8,7 +8,8 @@
 > (native multi-platform collection, decoder/rule engine, MITRE ATT&CK mapping,
 > vulnerability detection, CIS assessment) under the principle "reuse the mature
 > tool, build only the differentiating glue." May be revisited for a lightweight
-> custom-collector use case Wazuh doesn't cover. See the root README.
+> custom-collector use case Wazuh doesn't cover. See the root README and
+> [`DEVLOG.md`](DEVLOG.md) for this component's full build history.
 
 The ShadowTwin host agent collects security telemetry from a monitored host and
 emits it as a single, normalized JSON event stream. It is a single static Go

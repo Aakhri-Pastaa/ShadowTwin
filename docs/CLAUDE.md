@@ -1,9 +1,14 @@
 # Project memory for Claude Code
 
-This file is read automatically by Claude Code at the start of every session
-in this repo (and in any subdirectory). Keep it short: navigation and hard
-rules live here, detailed explanations live in docs/ and get linked with
-@path/to/file so they load on demand instead of bloating every session.
+> **Note:** Claude Code only auto-loads a `CLAUDE.md` from the repo root
+> (or a parent/child of the current working directory) — living under
+> `docs/` means this file is **not** picked up automatically. It's kept
+> here as the canonical reference doc; point Claude at it explicitly
+> (`@docs/CLAUDE.md`) or paste it in if you need it loaded for a session.
+
+Keep it short: navigation and hard rules live here, detailed explanations
+live in docs/ and get linked with @path/to/file so they load on demand
+instead of bloating every session.
 
 ## What this project is
 
