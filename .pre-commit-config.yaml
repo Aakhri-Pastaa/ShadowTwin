@@ -26,14 +26,15 @@ repos:
     hooks:
       - id: go-fmt
 
-  # go vet needs module context, but the module lives in host-agent/, not the
+  # go vet needs module context, but the module lives in go-agent-v0/, not the
   # repo root. Run it there via a local hook so it mirrors CI exactly
-  # (host-agent.yml runs `go vet ./...` with working-directory: host-agent).
+  # (go-agent-v0.yml runs `go vet ./...` with working-directory: go-agent-v0).
+  # go-agent-v0 is archived (superseded by Wazuh) but still kept green.
   - repo: local
     hooks:
       - id: go-vet
-        name: go vet (host-agent module)
-        entry: bash -c 'cd host-agent && go vet ./...'
+        name: go vet (go-agent-v0 module, archived)
+        entry: bash -c 'cd go-agent-v0 && go vet ./...'
         language: system
-        files: ^host-agent/.*\.go$
+        files: ^go-agent-v0/.*\.go$
         pass_filenames: false

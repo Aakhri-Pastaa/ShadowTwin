@@ -1,28 +1,41 @@
 # Project memory for Claude Code
 
-This file is read automatically by Claude Code at the start of every session
-in this repo (and in any subdirectory). Keep it short: navigation and hard
-rules live here, detailed explanations live in docs/ and get linked with
-@path/to/file so they load on demand instead of bloating every session.
+> **Note:** Claude Code only auto-loads a `CLAUDE.md` from the repo root
+> (or a parent/child of the current working directory) — living under
+> `docs/` means this file is **not** picked up automatically. It's kept
+> here as the canonical reference doc; point Claude at it explicitly
+> (`@docs/CLAUDE.md`) or paste it in if you need it loaded for a session.
+
+Keep it short: navigation and hard rules live here, detailed explanations
+live in docs/ and get linked with @path/to/file so they load on demand
+instead of bloating every session.
 
 ## What this project is
 
 @docs/architecture.md
 
-A two-person, open-source closed-loop purple-team lab: a host agent collects
-telemetry from a deliberately vulnerable sandbox, an Evaluator agent triages
-it, an Attacker agent validates exploitability inside the sandbox only, and
-a Defender agent remediates and re-triggers the Attacker to prove the fix
-worked. See docs/architecture.md for the full diagram and component list.
+A two-person, open-source closed-loop purple-team lab, **tools-first**:
+**Wazuh** is the primary telemetry + detection source (native collection,
+decoder/rule engine, ATT&CK mapping, vuln + CIS assessment) for a
+deliberately vulnerable sandbox. An ingestor normalizes Wazuh alerts into a
+shared PostgreSQL findings store. An Evaluator agent triages what rules
+can't resolve. An Attacker agent validates exploitability inside the
+sandbox only. A Defender agent produces an **advisory-only** fix
+recommendation; a human applies it; the Attacker re-triggers to prove
+closure. Agents coordinate through the findings store's `status` field, not
+direct calls. See docs/architecture.md for the full diagram and component
+list.
 
 ## Repo layout
 
-- `host-agent/` — Go. Telemetry collector + mTLS shipper. See host-agent/README.md.
+- `go-agent-v0/` — Go. **Archived**, superseded by Wazuh. Original custom
+  telemetry collector + mTLS shipper. See go-agent-v0/README.md.
+- `ingestor/` — Normalizes Wazuh alerts into the PostgreSQL findings store.
 - `graph/` — Python. Neo4j schema + discovery loaders (env graph).
 - `threat-intel/` — Python. KEV/EPSS/OSV/ATT&CK ingestion + graph correlation.
-- `evaluator/` — Python. ML pre-filter + LLM triage agent.
-- `attacker/` — Python. LLM-orchestrated exploit validation. SCOPE-LOCKED, see below.
-- `defender/` — Python. Remediation + compliance mapping + re-verify trigger.
+- `evaluator/` — Python. Triage agent for the ambiguous residue rules can't resolve.
+- `attacker/` — Python. Tool-driven exploit validation. SCOPE-LOCKED, see below.
+- `defender/` — Python. Advisory-only remediation + compliance mapping + re-verify trigger.
 - `lab/` — Docker Compose definition of the vulnerable sandbox.
 - `frontend/` — Next.js dashboard.
 - `docs/` — architecture, ADRs, deeper design notes.

@@ -5,7 +5,8 @@ labels: bug
 ---
 
 **Component**
-<!-- host-agent / graph / threat-intel / evaluator / attacker / defender / frontend / lab -->
+<!-- wazuh / ingestor / graph / threat-intel / evaluator / attacker / defender /
+     frontend / lab / go-agent-v0 (archived) -->
 
 **What happened**
 
