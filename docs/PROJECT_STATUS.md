@@ -32,6 +32,9 @@
 
 ## Current architecture (as-built)
 
+See [`TOPOLOGY.md`](TOPOLOGY.md) for a rendered diagram with host-role
+breakdown. Quick version:
+
 ```
 Windows endpoint
       │

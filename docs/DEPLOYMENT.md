@@ -1,7 +1,8 @@
 # Deployment
 
 High-level deployment sequence for the current pipeline. This file
-describes *steps*, not real hosts/IPs — see the local-only, gitignored
+describes *steps*, not real hosts/IPs — see [`TOPOLOGY.md`](TOPOLOGY.md)
+for the genericized public diagram, or the local-only, gitignored
 `INFRASTRUCTURE.md` for actual target details.
 
 ```

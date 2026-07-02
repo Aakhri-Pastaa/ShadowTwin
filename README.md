@@ -57,6 +57,7 @@ updated as the project evolves:
 
 - [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md) — living doc, what's
   actually running right now
+- [`docs/TOPOLOGY.md`](docs/TOPOLOGY.md) — genericized infrastructure diagram
 - [`docs/ROADMAP.md`](docs/ROADMAP.md) — phased forward plan
 - [`docs/architecture.md`](docs/architecture.md) — target architecture
 - [`docs/DECISIONS.md`](docs/DECISIONS.md) — lightweight running decision

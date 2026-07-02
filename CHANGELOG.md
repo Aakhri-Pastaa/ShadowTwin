@@ -24,3 +24,5 @@ a first tagged release.
   `ROADMAP.md`, `DECISIONS.md`, `DEPLOYMENT.md`, `AI.md`, `API.md`,
   `TROUBLESHOOTING.md`, `TODO.md`. Plus a local-only, gitignored
   `INFRASTRUCTURE.md` for real hostnames/IPs (never committed).
+- `docs/TOPOLOGY.md` — public, genericized infrastructure diagram
+  (Mermaid), no real hostnames/IPs/container IDs.
