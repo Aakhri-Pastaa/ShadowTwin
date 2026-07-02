@@ -1,18 +1,20 @@
-# Infrastructure Topology (public, genericized)
+# Infrastructure Topology (public)
 
 A sleek, high-level view of the infrastructure behind
-[`PROJECT_STATUS.md`](PROJECT_STATUS.md) — enough for anyone reading the
-repo to understand the shape of the system, with no real hostnames,
-container IDs, or IPs. For the actual topology (host names, addresses),
-see the local-only, gitignored [`INFRASTRUCTURE.md`](INFRASTRUCTURE.md) —
-that file never leaves your machine.
+[`PROJECT_STATUS.md`](PROJECT_STATUS.md) — the actual services/software in
+use, so anyone reading the repo can understand and relate to the stack.
+What's deliberately left out: real hostnames, container IDs, and IPs. For
+those, see the local-only, gitignored [`INFRASTRUCTURE.md`](INFRASTRUCTURE.md)
+— that file never leaves your machine.
 
 ```mermaid
 flowchart TD
     EP["Windows Endpoint"] --> AG["Wazuh Agent"]
-    AG --> MGR["Wazuh Manager\n(SIEM Host)"]
+    AG --> MGR["Wazuh Manager"]
+    MGR --> OS["OpenSearch"]
+    MGR --> WD["Wazuh Dashboard"]
     MGR -->|"alerts.json / archives.json"| FWD["ShadowTwin Forwarder"]
-    FWD --> BRK[("Kafka Broker\n(Messaging Host)")]
+    FWD --> BRK[("Kafka\n(KRaft mode)")]
     BRK --> TOP[["Topics:\nwazuh-alerts, wazuh-logs"]]
     TOP -.future.-> AI["AI Consumer"]
     AI --> DB[("PostgreSQL")]
@@ -20,17 +22,17 @@ flowchart TD
     BRK -.ops only, not user-facing.-> KUI["Kafka UI"]
 ```
 
-## Roles (generic, no real names)
+## Component grouping
 
-| Role | What runs there |
-|---|---|
-| **SIEM Host** | Wazuh Manager, OpenSearch, Wazuh Dashboard |
-| **Messaging Host** | Kafka (KRaft mode), Kafka UI |
-| *(Endpoint)* | Wazuh Agent, generates the raw telemetry |
+Which services are co-located matters for understanding the system, so
+it's shown here — just without real host identifiers:
 
-Two logical hosts today; nothing here implies a specific number of
-physical/virtual machines, cloud provider, or network layout — see the
-private `INFRASTRUCTURE.md` for that if you have access to it.
+- **Detection stack** (one host): Wazuh Manager, OpenSearch, Wazuh Dashboard.
+- **Messaging stack** (a second host): Kafka (KRaft mode), Kafka UI.
+- **Endpoint**: Wazuh Agent, generating the raw telemetry.
+
+Nothing here implies a specific number of physical/virtual machines, cloud
+provider, or network layout — see the private `INFRASTRUCTURE.md` for that.
 
 ## Notes
 
