@@ -102,21 +102,35 @@ described the old Go-agent-as-primary design.
 
 **Refs.** PR #7.
 
+### 2026-07-03 — Add the docs/ engineering wiki
+
+**What.** Added `docs/PROJECT_STATUS.md` (living as-built status),
+`ROADMAP.md`, `DECISIONS.md`, `DEPLOYMENT.md`, `AI.md`, `API.md`,
+`TROUBLESHOOTING.md`, `TODO.md`, and a local-only, gitignored
+`INFRASTRUCTURE.md`. `PROJECT_STATUS.md` documents the concrete pipeline
+actually running (Wazuh → Forwarder → Kafka → [future] AI consumer →
+PostgreSQL → Streamlit) alongside the ShadowTwin Forwarder, Kafka, and
+Kafka UI infrastructure.
+
+**Why.** The project is expected to grow over months; a small internal
+wiki (updated every session) beats tribal knowledge for onboarding
+collaborators and recovering context after a break. `INFRASTRUCTURE.md`
+stays local/gitignored because this repo is public — real hostnames,
+container IDs, and IPs never get committed (per `SECURITY.md`'s scrub
+checklist).
+
+**How.** Docs-only; see `docs/PROJECT_STATUS.md` for the current
+open discrepancy between the Streamlit dashboard actually being built and
+`architecture.md`/`CLAUDE.md` still describing a Next.js frontend — not
+yet resolved.
+
+**Refs.** PR (docs/engineering-wiki branch).
+
 ## Upcoming / backlog
 
-Rough priority order for the current, Wazuh-based direction:
-
-1. **Wazuh → ingestor** — normalize Wazuh alerts into the PostgreSQL
-   findings store; define the `status` field lifecycle agents coordinate on.
-2. **Findings store schema** — the shared coordination point between
-   Evaluator, Attacker, and Defender.
-3. **Evaluator** — triage for findings Wazuh's rules can't resolve on their
-   own (ambiguous severity/business impact, cross-signal correlation).
-4. **Attacker** — tool-driven exploit validation against `lab/scope.yaml`,
-   attaching proof to a finding.
-5. **Defender** — advisory-only remediation + compliance mapping, plus the
-   re-verify trigger back to the Attacker.
-6. **Frontend** — findings feed, agent reasoning, reports.
+See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the phased plan and
+[`docs/TODO.md`](docs/TODO.md) for the tactical next items — kept there now
+instead of duplicated here so there's one place to update.
 
 ## Decision index (ADRs)
 

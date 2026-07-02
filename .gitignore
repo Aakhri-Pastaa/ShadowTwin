@@ -6,6 +6,9 @@
 *.key
 *.crt
 
+# --- Local-only infra reference: real hostnames/IPs/topology, never public -
+docs/INFRASTRUCTURE.md
+
 # --- Go (go-agent-v0, archived) -------------------------------------------
 /go-agent-v0/bin/
 *.exe

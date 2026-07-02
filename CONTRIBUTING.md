@@ -58,3 +58,7 @@ If a change is more than "implement what we already agreed on" — a new
 datastore, a new language, dropping or merging a layer — write a short ADR
 in `docs/adr/` before or alongside the PR. See `docs/adr/0001-*.md` for the
 format and `docs/adr/0002-*.md` for a worked example.
+
+For smaller, frequent decisions that don't warrant a full ADR, log a quick
+entry in [`docs/DECISIONS.md`](docs/DECISIONS.md) instead — promote it to
+a proper ADR later if it turns out to matter more than expected.

@@ -20,3 +20,7 @@ a first tagged release.
 
 ### Added
 - Repo scaffolding: CI, pre-commit, issue/PR templates, ADR log.
+- `docs/` engineering wiki: `PROJECT_STATUS.md` (living as-built status),
+  `ROADMAP.md`, `DECISIONS.md`, `DEPLOYMENT.md`, `AI.md`, `API.md`,
+  `TROUBLESHOOTING.md`, `TODO.md`. Plus a local-only, gitignored
+  `INFRASTRUCTURE.md` for real hostnames/IPs (never committed).

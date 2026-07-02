@@ -50,6 +50,23 @@ policy before running the Attacker component against anything.
 | `frontend/` | Dashboard: findings feed, agent reasoning, reports | ⬜ planned |
 | [`go-agent-v0/`](go-agent-v0/) | Original custom Go telemetry agent | ⏸ archived — superseded by Wazuh |
 
+## Documentation
+
+This project keeps a small internal engineering wiki under `docs/`,
+updated as the project evolves:
+
+- [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md) — living doc, what's
+  actually running right now
+- [`docs/ROADMAP.md`](docs/ROADMAP.md) — phased forward plan
+- [`docs/architecture.md`](docs/architecture.md) — target architecture
+- [`docs/DECISIONS.md`](docs/DECISIONS.md) — lightweight running decision
+  log (see also the formal [`docs/adr/`](docs/adr/) records)
+- [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md), [`docs/AI.md`](docs/AI.md),
+  [`docs/API.md`](docs/API.md), [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md),
+  [`docs/TODO.md`](docs/TODO.md)
+- [`DEVLOG.md`](DEVLOG.md) — narrative build history
+- [`CHANGELOG.md`](CHANGELOG.md) — notable changes
+
 ## Quickstart
 
 > TODO — fill in once `lab/docker-compose.yml`, the Wazuh deployment, and
