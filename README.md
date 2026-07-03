@@ -32,13 +32,13 @@ now fails counts as done.
 
 ```mermaid
 flowchart LR
-    W["🛰️ Wazuh<br/>detect"] --> E["🧠 Evaluator<br/>triage"]
-    E --> A["💥 Attacker<br/>prove it's real"]
-    A --> D["🛡️ Defender<br/>recommend fix"]
-    D --> H(["🧑‍🔧 Human<br/>applies fix"])
-    H --> V["🔁 Attacker<br/>re-verify"]
-    V -->|"still exploitable? loop back"| E
-    V -->|"attack now fails? ✅ closed"| DONE["✔️ Verified"]
+    W["Wazuh: detect"] --> E["Evaluator: triage"]
+    E --> A["Attacker: prove exploit"]
+    A --> D["Defender: recommend fix"]
+    D --> H["Human: apply fix"]
+    H --> V["Attacker: re-verify"]
+    V -->|still exploitable| E
+    V -->|attack fails now| DONE(["Verified, loop closed"])
 ```
 
 ## ✨ Principles

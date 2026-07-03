@@ -11,20 +11,20 @@ Dashboard keeps working exactly as before.
 
 ```mermaid
 flowchart LR
-    subgraph WH["Wazuh host"]
+    subgraph wazuh_host["Wazuh host"]
         WM["Wazuh Manager"]
-        AL["/var/ossec/logs/.../alerts.json"]
-        AR["/var/ossec/logs/.../archives.json"]
-        FWD["ShadowTwin Forwarder<br/>(systemd)"]
+        AL["alerts.json"]
+        AR["archives.json"]
+        FWD["ShadowTwin Forwarder (systemd)"]
         WM --> AL --> FWD
         WM --> AR --> FWD
     end
-    subgraph KH["Kafka host"]
-        TA["topic: wazuh-alerts"]
-        TL["topic: wazuh-logs"]
+    subgraph kafka_host["Kafka host"]
+        TA["wazuh-alerts topic"]
+        TL["wazuh-logs topic"]
     end
-    FWD -->|alerts.json| TA
-    FWD -->|archives.json| TL
+    FWD -->|alerts| TA
+    FWD -->|archives| TL
 ```
 
 | File                                    | Kafka topic    |
