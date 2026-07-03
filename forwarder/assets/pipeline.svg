@@ -1,0 +1,54 @@
+<svg viewBox="0 0 840 210" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="pt pd" font-family="'Segoe UI', Roboto, system-ui, sans-serif">
+  <title id="pt">ShadowTwin Forwarder pipeline</title>
+  <desc id="pd">On the Wazuh host, alerts.json and archives.json are tailed by the ShadowTwin Forwarder (a systemd service) and streamed to the Kafka topics wazuh-alerts and wazuh-logs. Packets animate along each wire.</desc>
+  <defs>
+    <linearGradient id="fbg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0a0e1a"/><stop offset="1" stop-color="#131a2e"/></linearGradient>
+    <marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#4a5891"/></marker>
+  </defs>
+  <rect x="0" y="0" width="840" height="210" rx="16" fill="url(#fbg)"/>
+
+  <!-- host containers -->
+  <rect x="24" y="28" width="228" height="154" rx="12" fill="#0f1526" stroke="#2b3566" stroke-dasharray="5 5"/>
+  <text x="138" y="49" text-anchor="middle" font-size="12" font-weight="700" fill="#8f9bc4">Wazuh host</text>
+  <rect x="588" y="28" width="228" height="154" rx="12" fill="#0f1526" stroke="#2b3566" stroke-dasharray="5 5"/>
+  <text x="702" y="49" text-anchor="middle" font-size="12" font-weight="700" fill="#8f9bc4">Kafka host</text>
+
+  <!-- wires -->
+  <path d="M202,90 C270,90 300,96 340,96" fill="none" stroke="#38bdf8" stroke-width="2" opacity="0.55" marker-end="url(#ah)"/>
+  <path d="M202,136 C280,136 300,116 340,116" fill="none" stroke="#34d399" stroke-width="2" opacity="0.55" marker-end="url(#ah)"/>
+  <path d="M500,96 C544,96 572,90 616,90" fill="none" stroke="#38bdf8" stroke-width="2" opacity="0.55" marker-end="url(#ah)"/>
+  <path d="M500,116 C560,116 576,136 616,136" fill="none" stroke="#34d399" stroke-width="2" opacity="0.55" marker-end="url(#ah)"/>
+
+  <!-- flowing packets -->
+  <g>
+    <rect width="8" height="8" rx="2" fill="#7dd3fc"><animateMotion dur="1.9s" repeatCount="indefinite" path="M198,86 C266,86 296,92 336,92"/></rect>
+    <rect width="8" height="8" rx="2" fill="#7dd3fc" opacity="0.7"><animateMotion dur="1.9s" begin="0.95s" repeatCount="indefinite" path="M198,86 C266,86 296,92 336,92"/></rect>
+    <rect width="8" height="8" rx="2" fill="#6ee7b7"><animateMotion dur="2.2s" repeatCount="indefinite" path="M198,132 C276,132 296,112 336,112"/></rect>
+    <rect width="8" height="8" rx="2" fill="#7dd3fc"><animateMotion dur="1.7s" begin="0.3s" repeatCount="indefinite" path="M500,92 C544,92 572,86 612,86"/></rect>
+    <rect width="8" height="8" rx="2" fill="#6ee7b7"><animateMotion dur="2s" begin="0.6s" repeatCount="indefinite" path="M500,112 C560,112 576,132 612,132"/></rect>
+  </g>
+
+  <!-- source files -->
+  <g text-anchor="middle" font-weight="600" font-size="12">
+    <g transform="translate(52,74)"><rect width="150" height="32" rx="8" fill="#141a30" stroke="#38bdf8"/><text x="75" y="21" fill="#dbeafe">alerts.json</text></g>
+    <g transform="translate(52,120)"><rect width="150" height="32" rx="8" fill="#141a30" stroke="#34d399"/><text x="75" y="21" fill="#d1fae5">archives.json</text></g>
+  </g>
+
+  <!-- topics -->
+  <g text-anchor="middle" font-weight="600" font-size="12">
+    <g transform="translate(616,74)"><rect width="172" height="32" rx="8" fill="#141a30" stroke="#38bdf8"/><text x="86" y="21" fill="#dbeafe">wazuh-alerts</text></g>
+    <g transform="translate(616,120)"><rect width="172" height="32" rx="8" fill="#141a30" stroke="#34d399"/><text x="86" y="21" fill="#d1fae5">wazuh-logs</text></g>
+  </g>
+
+  <!-- forwarder -->
+  <g transform="translate(344,74)">
+    <rect width="152" height="62" rx="12" fill="#1a1636" stroke="#8b5cf6" stroke-width="1.6"/>
+    <text x="76" y="26" text-anchor="middle" font-size="13" font-weight="800" fill="#e9e3ff">ShadowTwin</text>
+    <text x="76" y="44" text-anchor="middle" font-size="12" font-weight="700" fill="#c4b5fd">Forwarder</text>
+  </g>
+  <g transform="translate(372,142)">
+    <rect width="96" height="22" rx="11" fill="#10241a" stroke="#2f855a"/>
+    <circle cx="16" cy="11" r="4" fill="#34d399"><animate attributeName="opacity" values="1;0.3;1" dur="1.6s" repeatCount="indefinite"/></circle>
+    <text x="56" y="15" text-anchor="middle" font-size="11" font-weight="700" fill="#6ee7b7">systemd</text>
+  </g>
+</svg>

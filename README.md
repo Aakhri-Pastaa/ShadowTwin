@@ -1,8 +1,8 @@
 <div align="center">
 
-# 🌑 ShadowTwin
+<img src="docs/assets/hero.svg" alt="ShadowTwin — the security lab that proves its own fixes" width="100%">
 
-### The security lab that proves its own fixes.
+<br/><br/>
 
 **Build a shadow copy of a real environment. Let AI-driven attackers loose on it — safely. Then prove every fix by attacking again.**
 
@@ -30,16 +30,13 @@ inside the sandbox only. A defender writes the fix as a **recommendation**.
 A human applies it. Then the attacker runs again, and only a re-attack that
 now fails counts as done.
 
-```mermaid
-flowchart LR
-    W["Wazuh: detect"] --> E["Evaluator: triage"]
-    E --> A["Attacker: prove exploit"]
-    A --> D["Defender: recommend fix"]
-    D --> H["Human: apply fix"]
-    H --> V["Attacker: re-verify"]
-    V -->|still exploitable| E
-    V -->|attack fails now| DONE(["Verified, loop closed"])
-```
+## 🔬 How it works
+
+<div align="center">
+
+<img src="docs/assets/loop.svg" alt="Closed loop — Wazuh detect → Evaluator triage → Attacker prove exploit → Defender advise fix → Human apply fix → Attacker re-verify, looping until the attack fails" width="560">
+
+</div>
 
 ## ✨ Principles
 

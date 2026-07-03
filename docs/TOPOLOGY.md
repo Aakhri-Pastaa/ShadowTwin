@@ -8,6 +8,7 @@ those, see the local-only, gitignored [`INFRASTRUCTURE.md`](INFRASTRUCTURE.md)
 — that file never leaves your machine.
 
 ```mermaid
+%%{init: {'theme':'base','themeVariables':{'fontFamily':'Segoe UI, system-ui, sans-serif','lineColor':'#5b67a0','clusterBkg':'#0f1526','clusterBorder':'#2b3566'}}}%%
 flowchart TD
     EP["Windows Endpoint"] --> AG["Wazuh Agent"]
     AG --> MGR["Wazuh Manager"]
@@ -20,6 +21,15 @@ flowchart TD
     AI --> DB[("PostgreSQL")]
     DB --> UI["Streamlit Dashboard"]
     BRK -.ops only, not user-facing.-> KUI["Kafka UI"]
+
+    classDef detect fill:#0f1a33,stroke:#38bdf8,color:#e6edf7;
+    classDef transport fill:#171334,stroke:#8b5cf6,color:#efe9ff;
+    classDef future fill:#0e2018,stroke:#34d399,color:#e7fbef,stroke-dasharray:4 3;
+    classDef ops fill:#14192b,stroke:#4a5570,color:#9aa4c4;
+    class EP,AG,MGR,OS,WD detect;
+    class FWD,BRK,TOP transport;
+    class AI,DB,UI future;
+    class KUI ops;
 ```
 
 ## Component grouping

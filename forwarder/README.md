@@ -9,30 +9,18 @@ new event to Apache Kafka. It is completely independent of the Wazuh →
 Filebeat → OpenSearch pipeline: it only *reads* the files, so the Wazuh
 Dashboard keeps working exactly as before.
 
-```mermaid
-flowchart LR
-    subgraph wazuh_host["Wazuh host"]
-        WM["Wazuh Manager"]
-        AL["alerts.json"]
-        AR["archives.json"]
-        FWD["ShadowTwin Forwarder (systemd)"]
-        WM --> AL --> FWD
-        WM --> AR --> FWD
-    end
-    subgraph kafka_host["Kafka host"]
-        TA["wazuh-alerts topic"]
-        TL["wazuh-logs topic"]
-    end
-    FWD -->|alerts| TA
-    FWD -->|archives| TL
-```
+<div align="center">
+
+<img src="assets/pipeline.svg" alt="Wazuh host: alerts.json and archives.json are tailed by the ShadowTwin Forwarder (systemd) and streamed to the Kafka topics wazuh-alerts and wazuh-logs" width="720">
+
+</div>
 
 | File                                    | Kafka topic    |
 |-----------------------------------------|----------------|
 | `/var/ossec/logs/alerts/alerts.json`    | `wazuh-alerts` |
 | `/var/ossec/logs/archives/archives.json`| `wazuh-logs`   |
 
-## Quick install (production)
+## 🚀 Quick install (production)
 
 ```bash
 sudo ./install_service.sh
@@ -58,7 +46,7 @@ journalctl -u shadowtwin-forwarder -f
 Remove with `sudo ./uninstall_service.sh` (config, offsets and logs are
 kept for reinstalls; add `--purge` to delete those too).
 
-## How it works
+## ⚙️ How it works
 
 * **Watcher** (`watcher.py`) — follows each file like `tail -F`: it keeps a
   handle open, reads new complete lines as they appear, and compares the
@@ -87,7 +75,7 @@ kept for reinstalls; add `--purge` to delete those too).
   (offsets could be lost silently); an unreachable broker or missing source
   file only warns, because both heal without intervention.
 
-## Health checks
+## 🩺 Health checks
 
 ```bash
 # For monitoring/cron — exit 0 when healthy:
@@ -105,7 +93,7 @@ Run them as the service user so file permissions are tested realistically:
 `sudo -u shadowtwin .venv/bin/python app.py --health --config ...`.
 Check modes never write logs or state — they are safe to run as anyone.
 
-## Requirements
+## 📋 Requirements
 
 * Ubuntu 24.04 (Python 3.12), or Docker
 * Network access from the Wazuh host to the broker `localhost:9092`
@@ -119,7 +107,7 @@ Check modes never write logs or state — they are safe to run as anyone.
 > enabled. If it is absent the forwarder waits for the file to appear and
 > logs a single warning — nothing breaks.
 
-## Configuration
+## 🔧 Configuration
 
 Everything lives in `/etc/shadowtwin-forwarder/config.yaml`. The `topics`
 and `files` sections are joined by key: `files.alerts` is published to
@@ -173,7 +161,7 @@ loaded by the unit):
 | `SHADOWTWIN_LOG_LEVEL`               | `logging.level`          |
 | `SHADOWTWIN_STATE_FILE`              | `state.file`             |
 
-## Logs
+## 📜 Logs
 
 * **journald** — `journalctl -u shadowtwin-forwarder -f` (everything the
   console handler prints, tagged `shadowtwin-forwarder`).
@@ -188,7 +176,7 @@ a stats line reports throughput and positions:
 stats: produced=1284 acked=1284 failed=0 parse_errors=0 reconnects=1 queued=0 in_flight=0 | offsets: alerts=52117340, archives=9441207
 ```
 
-## Systemd
+## 🧩 Systemd
 
 `systemd/shadowtwin-forwarder.service` (installed by `install_service.sh`,
 which rewrites the paths to wherever the checkout lives):
@@ -237,7 +225,7 @@ The installer never touches `/etc/shadowtwin-forwarder/config.yaml` or the
 state file, so the upgraded service resumes from the same offsets. Compare
 your config against the shipped `config.yaml` for new options.
 
-## Recovery
+## 🛟 Recovery
 
 | Scenario | What happens |
 |----------|--------------|
@@ -247,7 +235,7 @@ your config against the shipped `config.yaml` for new options.
 | `state.json` corrupt or lost | The previous checkpoint `state.json.bak` is loaded automatically; the bad file is kept as `state.json.corrupt` for inspection. If both are unusable, the forwarder starts fresh per `watcher.start_from`. |
 | Start over deliberately | `sudo systemctl stop shadowtwin-forwarder`, delete `/var/lib/shadowtwin-forwarder/state.json*`, start again. |
 
-## Docker (alternative to systemd)
+## 🐳 Docker (alternative to systemd)
 
 Run on the Wazuh host (the container needs the Wazuh log files bind-mounted):
 
@@ -261,7 +249,7 @@ docker compose logs -f
 The compose file mounts `/var/ossec/logs` read-only, keeps state and logs
 in named volumes, and joins the container user to the host's `wazuh` group.
 
-## Development
+## 🛠️ Development
 
 ```bash
 make venv                     # virtualenv + runtime deps
@@ -275,7 +263,7 @@ The project is also an installable package (`pyproject.toml`):
 `pip install .` provides the `shadowtwin-forwarder` console command and
 proper versioning for future CI/CD.
 
-## Troubleshooting
+## 🧯 Troubleshooting
 
 **Service won't start** — `journalctl -u shadowtwin-forwarder -e`. The
 startup validation logs exactly which check failed. A Permissions failure
@@ -311,7 +299,7 @@ re-sent. Consumers should deduplicate if exactly-once matters.
 while triggering an alert on the Wazuh host (e.g. a failed SSH login), or watch the
 topic counters in Kafka UI.
 
-## Project layout
+## 🗂️ Project layout
 
 ```
 shadowtwin-forwarder/

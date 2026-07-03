@@ -23,6 +23,11 @@ a first tagged release.
 - Repo scaffolding: CI, pre-commit, issue/PR templates, ADR log.
 
 ### Changed
+- **Visual refresh:** added self-hosted animated SVGs — a hero banner and a
+  closed-loop workflow (`docs/assets/`) and a forwarder pipeline
+  (`forwarder/assets/`) — embedded in the READMEs in place of the plain
+  Mermaid diagrams; colored the `TOPOLOGY.md` Mermaid; added emoji to the
+  forwarder README section headers.
 - Docs updated for the forwarder milestone: `PROJECT_STATUS.md` (→ v0.2.0,
   ingestion layer production-ready), `ROADMAP.md`, `TODO.md`, `DECISIONS.md`,
   `DEPLOYMENT.md`, `TROUBLESHOOTING.md`, and the repo layout in `docs/CLAUDE.md`.

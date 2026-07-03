@@ -1,0 +1,61 @@
+<svg viewBox="0 0 900 250" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="t d" font-family="'Segoe UI', Roboto, system-ui, sans-serif">
+  <title id="t">ShadowTwin</title>
+  <desc id="d">Dark banner: a shadow-moon logo, the gradient title ShadowTwin, the tagline "the security lab that proves its own fixes", tech pills, and an animated closed loop with a dot travelling detect, prove, advise, fix, verify.</desc>
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0a0e1a"/>
+      <stop offset="0.55" stop-color="#12172b"/>
+      <stop offset="1" stop-color="#1b1430"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#8b5cf6" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#8b5cf6" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#a78bfa"/>
+      <stop offset="0.42" stop-color="#a78bfa"/>
+      <stop offset="0.5" stop-color="#f5f3ff"/>
+      <stop offset="0.58" stop-color="#a78bfa"/>
+      <stop offset="1" stop-color="#a78bfa"/>
+      <animateTransform attributeName="gradientTransform" type="translate" from="-1 0" to="1 0" dur="3.4s" repeatCount="indefinite"/>
+    </linearGradient>
+    <filter id="soft" x="-60%" y="-60%" width="220%" height="220%"><feGaussianBlur stdDeviation="3"/></filter>
+  </defs>
+
+  <rect x="0" y="0" width="900" height="250" rx="18" fill="url(#bg)"/>
+  <circle cx="700" cy="125" r="150" fill="url(#glow)"/>
+
+  <g transform="translate(70,92)">
+    <circle cx="0" cy="0" r="31" fill="#151a30" stroke="#8b5cf6" stroke-width="1.5">
+      <animate attributeName="stroke-opacity" values="0.5;1;0.5" dur="3s" repeatCount="indefinite"/>
+    </circle>
+    <circle cx="12" cy="-3" r="27" fill="#0a0e1a"/>
+    <circle cx="-7" cy="-9" r="2.5" fill="#22d3ee"/>
+  </g>
+
+  <text x="118" y="86" font-size="48" font-weight="800" fill="url(#sheen)" letter-spacing="0.5">ShadowTwin</text>
+  <text x="120" y="116" font-size="16" fill="#c8cee0">The security lab that <tspan fill="#a78bfa" font-weight="700">proves its own fixes</tspan>.</text>
+
+  <g font-size="12" font-weight="600">
+    <g transform="translate(120,136)"><rect width="70" height="25" rx="12.5" fill="#1a2140" stroke="#2b3566"/><text x="35" y="17" text-anchor="middle" fill="#9fb0e8">Wazuh</text></g>
+    <g transform="translate(198,136)"><rect width="64" height="25" rx="12.5" fill="#1a2140" stroke="#2b3566"/><text x="32" y="17" text-anchor="middle" fill="#9fb0e8">Kafka</text></g>
+    <g transform="translate(270,136)"><rect width="78" height="25" rx="12.5" fill="#1a2140" stroke="#2b3566"/><text x="39" y="17" text-anchor="middle" fill="#9fb0e8">systemd</text></g>
+    <g transform="translate(356,136)"><rect width="134" height="25" rx="12.5" fill="#231a3d" stroke="#4a327d"/><text x="67" y="17" text-anchor="middle" fill="#c4b5fd">human-in-the-loop</text></g>
+  </g>
+
+  <g transform="translate(60,0)">
+    <circle cx="700" cy="125" r="72" fill="none" stroke="#33406e" stroke-width="2" stroke-dasharray="4 6">
+      <animateTransform attributeName="transform" type="rotate" from="0 700 125" to="360 700 125" dur="40s" repeatCount="indefinite"/>
+    </circle>
+    <g fill="#12172b" stroke="#8b5cf6" stroke-width="2">
+      <circle cx="700" cy="53" r="9"/><circle cx="768" cy="103" r="9"/><circle cx="742" cy="184" r="9"/><circle cx="658" cy="184" r="9"/><circle cx="632" cy="103" r="9"/>
+    </g>
+    <g font-size="10" fill="#8f9bc4" font-weight="600" text-anchor="middle">
+      <text x="700" y="41">detect</text><text x="793" y="101">prove</text><text x="754" y="204">advise</text><text x="648" y="204">fix</text><text x="606" y="101">verify</text>
+    </g>
+    <circle r="10" fill="#22d3ee" opacity="0.5" filter="url(#soft)"><animateMotion dur="4.2s" repeatCount="indefinite" path="M700,53 A72,72 0 1,1 699.99,53"/></circle>
+    <circle r="5" fill="#e0faff"><animateMotion dur="4.2s" repeatCount="indefinite" path="M700,53 A72,72 0 1,1 699.99,53"/></circle>
+    <text x="700" y="122" font-size="11" fill="#6b77a8" text-anchor="middle" font-weight="600">closed</text>
+    <text x="700" y="136" font-size="11" fill="#6b77a8" text-anchor="middle" font-weight="600">loop</text>
+  </g>
+</svg>
