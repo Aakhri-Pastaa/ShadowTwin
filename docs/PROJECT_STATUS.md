@@ -12,8 +12,8 @@
 > those.
 
 **Last updated:** 2026-07-03
-**Version:** v0.1.0
-**Project stage:** Infrastructure pipeline in progress
+**Version:** v0.2.0
+**Project stage:** Ingestion layer production-ready
 
 ---
 
@@ -21,7 +21,7 @@
 
 | Area | Progress |
 |---|---|
-| Infrastructure | `████████░░` 80% |
+| Infrastructure | `██████████` 100% |
 | Data pipeline | `██████████` 100% |
 | AI | `██░░░░░░░░` 20% |
 | Database | `░░░░░░░░░░` 0% |
@@ -78,24 +78,31 @@ is treated as final.
 - ✅ Kafka deployed
 - ✅ Kafka UI (infrastructure-only tooling — see Notes)
 - ✅ Docker
-- ✅ ShadowTwin Forwarder (ships Wazuh JSON logs to Kafka)
+- ✅ ShadowTwin Forwarder (ships Wazuh JSON logs to Kafka) — source now in
+  [`forwarder/`](../forwarder/)
 - ✅ `archives.json` streaming, verified end-to-end
 - ✅ `alerts.json` streaming, verified end-to-end
 - ✅ Kafka message delivery verified
+- ✅ **Forwarder productionized** — `systemd` service (`shadowtwin-forwarder`),
+  dedicated service user, config split to `/etc/`, health checks, state
+  persistence across restarts, auto-restart on crash/reboot. Validated:
+  restart, reboot, and crash-recovery all bring it back automatically.
 - ✅ Pivoted repo docs/architecture from custom Go agent to Wazuh-based
   design; archived the Go agent as `go-agent-v0/` (PR #7)
 
 ## Current work
 
-**Productionizing the ShadowTwin Forwarder.**
+**Kicking off the backend / consumer layer (Roadmap Phase 2).**
 
-- Current state: runs in development mode (started manually).
-- Need: a `systemd` service so it survives restarts and doesn't need a
-  human to start it.
+- The ingestion edge (Wazuh → Forwarder → Kafka) is now production-grade
+  and hands-off. Next is a **Kafka consumer** that reads `wazuh-alerts` /
+  `wazuh-logs`, normalizes events, and lands them in PostgreSQL as findings.
 
 ## Next milestone
 
-Implement `shadowtwin-forwarder.service` (systemd unit).
+**Kafka consumer → PostgreSQL findings store** (planned for a dedicated
+consumer host — see `INFRASTRUCTURE.md`). It consumes the existing topics
+without changing the ingestion architecture already in place.
 
 ## Blockers
 
@@ -103,15 +110,21 @@ None.
 
 ## Known issues
 
-- Forwarder is currently started manually — needs systemd (see Current work).
+None open. (The forwarder's manual-start limitation is resolved — it's a
+systemd service now.)
 
-## Success criteria (current milestone)
+## Success criteria (next milestone)
 
-`systemctl start shadowtwin-forwarder` works, and the service comes back
-up automatically after a reboot.
+A consumer reads both topics, normalizes each event, and writes a row to
+the findings store — with the same at-least-once discipline the forwarder
+already guarantees.
 
 ## Notes
 
 - Kafka UI is infrastructure/ops tooling only. End users (and the eventual
   Streamlit dashboard) should never need it — if a feature requires someone
   to open Kafka UI, that's a gap in the dashboard, not a workaround.
+- Day-to-day the forwarder is managed entirely through systemd
+  (`systemctl {start,stop,restart,status} shadowtwin-forwarder`,
+  `journalctl -u shadowtwin-forwarder -f`). No venv activation or manual
+  `python app.py` for normal operation.

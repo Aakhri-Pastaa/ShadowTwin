@@ -8,19 +8,20 @@ The master, phase-level plan. For tactical/next-PR items see
 
 - Wazuh
 - Kafka
-- ShadowTwin Forwarder
+- ShadowTwin Forwarder — production-ready systemd service, source in
+  [`forwarder/`](../forwarder/)
 
-**Status:** Completed.
+**Status:** ✅ Completed.
 
 ---
 
 ## Phase 2 — Backend
 
-- Kafka consumer
+- Kafka consumer (reads `wazuh-alerts` / `wazuh-logs`)
 - API layer (ingestor — see [`API.md`](API.md))
 - PostgreSQL findings store
 
-**Status:** Pending.
+**Status:** 🔨 In progress — next up.
 
 ---
 

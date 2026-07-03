@@ -126,6 +126,37 @@ yet resolved.
 
 **Refs.** PR (docs/engineering-wiki branch).
 
+### 2026-07-03 — ShadowTwin Forwarder productionized + brought into the repo
+
+**What.** The ShadowTwin Forwarder (Python; tails Wazuh's `alerts.json` /
+`archives.json` and ships each NDJSON line to Kafka) reached production
+quality and its source now lives in [`forwarder/`](forwarder/). It runs as
+the `shadowtwin-forwarder` systemd service: dedicated unprivileged service
+user (in the `wazuh` group for log read), one-command installer
+(`install_service.sh`), config split to `/etc/shadowtwin-forwarder/`,
+`--health` / `--validate-config` checks, atomic state checkpoints
+(resume-exactly-where-it-stopped), and hardened unit settings.
+
+**Why.** This is the first production component of the pipeline — the
+ingestion edge (Wazuh → Forwarder → Kafka). systemd gives it boot
+persistence and automatic restart (`Restart=always`), so it no longer needs
+a human to start it or survive a reboot. Bringing the source into the
+monorepo means the whole system versions together.
+
+**How.** Validated in the lab: `systemctl restart`, a full reboot, and a
+`kill -9` crash all brought the service back automatically; state resumed
+from the saved offsets rather than replaying. Before committing to this
+public repo, the real broker address and host identifiers were genericized
+(broker → `localhost:9092`, hosts → generic names); the real values live
+only in the gitignored `docs/INFRASTRUCTURE.md`.
+
+**Verification.** In-repo `tests/smoke_test.py` (rotation/truncation/
+recovery, config + env override, at-least-once end-to-end via a fake
+producer); operational restart/reboot/crash tests in the lab; installer
+health check passed.
+
+**Refs.** PR (feat/forwarder branch). Forwarder v1.0.0.
+
 ## Upcoming / backlog
 
 See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the phased plan and

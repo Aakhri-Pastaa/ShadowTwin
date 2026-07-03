@@ -1,0 +1,39 @@
+# ShadowTwin Forwarder configuration.
+# Environment overrides (take precedence over this file):
+#   SHADOWTWIN_KAFKA_BOOTSTRAP_SERVERS, SHADOWTWIN_LOG_LEVEL, SHADOWTWIN_STATE_FILE
+
+kafka:
+  bootstrap_servers:
+    - localhost:9092
+  client_id: shadowtwin-forwarder
+  compression: lz4
+  linger_ms: 50            # small delay to fill batches; latency vs throughput
+  batch_size: 131072       # bytes per partition batch
+  message_timeout_ms: 0    # 0 = retry forever; never drop a queued event
+  queue_max_messages: 100000
+
+# 'topics' and 'files' are joined by their keys: the file under files.<name>
+# is published to the topic under topics.<name>.
+topics:
+  alerts: wazuh-alerts
+  archives: wazuh-logs
+
+files:
+  alerts: /var/ossec/logs/alerts/alerts.json
+  archives: /var/ossec/logs/archives/archives.json
+
+watcher:
+  poll_interval: 0.25      # seconds between checks when a file is idle
+  batch_lines: 500         # max lines read per file per iteration
+  start_from: end          # end | beginning — only used when there is no saved state
+
+logging:
+  level: INFO
+  file: /var/log/shadowtwin-forwarder/forwarder.log
+  max_bytes: 10485760      # rotate at 10 MiB
+  backup_count: 5
+  console: true
+
+state:
+  file: /var/lib/shadowtwin-forwarder/state.json
+  save_interval: 2.0       # seconds between offset checkpoints

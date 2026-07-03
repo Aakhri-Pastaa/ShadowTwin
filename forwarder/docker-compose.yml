@@ -1,0 +1,29 @@
+# Runs on the Wazuh host: the forwarder needs local read access to
+# /var/ossec/logs. The Kafka broker (localhost:9092) is reached
+# over the network — no ports are exposed by this service.
+
+services:
+  shadowtwin-forwarder:
+    build: .
+    image: shadowtwin-forwarder:latest
+    container_name: shadowtwin-forwarder
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 45s   # must exceed the 30 s Kafka flush on shutdown
+    # GID of the host's 'wazuh' group so the container user may read the
+    # Wazuh logs (they are mode 0640, group wazuh). Set WAZUH_GID in .env:
+    #   getent group wazuh | cut -d: -f3
+    group_add:
+      - "${WAZUH_GID:-999}"
+    environment:
+      SHADOWTWIN_KAFKA_BOOTSTRAP_SERVERS: ${SHADOWTWIN_KAFKA_BOOTSTRAP_SERVERS:-localhost:9092}
+      SHADOWTWIN_LOG_LEVEL: ${SHADOWTWIN_LOG_LEVEL:-INFO}
+    volumes:
+      - /var/ossec/logs:/var/ossec/logs:ro
+      - ./config.yaml:/etc/shadowtwin-forwarder/config.yaml:ro
+      - forwarder-state:/var/lib/shadowtwin-forwarder
+      - forwarder-logs:/var/log/shadowtwin-forwarder
+
+volumes:
+  forwarder-state:
+  forwarder-logs:

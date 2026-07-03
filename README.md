@@ -55,7 +55,7 @@ flowchart LR
 | Component | Role | Status |
 |---|---|:--:|
 | **Wazuh** | Telemetry + detection: collection, rule engine, ATT&CK mapping, vuln + CIS assessment | 🟢 deployed |
-| **ShadowTwin Forwarder** | Streams Wazuh alerts into the pipeline over Kafka | 🟢 running |
+| [**ShadowTwin Forwarder**](forwarder/) | Streams Wazuh alerts into the pipeline over Kafka | 🟢 production (systemd) |
 | **Ingestor → PostgreSQL** | Normalizes alerts into a shared findings store agents coordinate through | ⚪ planned |
 | **Evaluator** | Triage for what rules alone can't resolve | ⚪ planned |
 | **Attacker** | Tool-driven exploit validation + proof, scope-locked to the lab | ⚪ planned |

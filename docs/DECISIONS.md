@@ -12,6 +12,28 @@ expected.
 
 ---
 
+## 2026-07-03 (later)
+
+**Decision.** Ship the forwarder's config as `/etc/shadowtwin-forwarder/config.yaml`,
+separate from the application code under `/opt`.
+
+**Reason.** Clean separation of configuration from code — the installer
+never overwrites an existing `/etc` config on upgrade, so a redeploy can't
+clobber a tuned production setup. The in-repo `config.yaml` is only a
+template (broker defaults to `localhost:9092`; real brokers are set per
+deployment or via `SHADOWTWIN_KAFKA_BOOTSTRAP_SERVERS`).
+
+**Decision.** Bring the forwarder source into the monorepo under
+[`forwarder/`](../forwarder/).
+
+**Reason.** It's now a production component of the pipeline, not a throwaway
+script — it belongs alongside the docs and (future) consumer/agents so the
+whole system versions together. Real broker IPs/hostnames were genericized
+before committing (public repo); the real values live only in the
+gitignored `INFRASTRUCTURE.md`.
+
+---
+
 ## 2026-07-03
 
 **Decision.** Use Kafka instead of Redis Streams for the telemetry pipeline.

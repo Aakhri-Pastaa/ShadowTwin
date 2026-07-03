@@ -16,11 +16,18 @@ overview.
 
 ### Forwarder not sending
 
-**Reason.** The forwarder process isn't running.
+**Reason.** The forwarder service isn't running (or a start-up check failed).
 
-**Solution.** Once it's a systemd service (see `PROJECT_STATUS.md` current
-milestone): `systemctl start shadowtwin-forwarder`. Until then, start it
-manually and check its logs.
+**Solution.** It's a systemd service now:
+`sudo systemctl restart shadowtwin-forwarder`, then
+`journalctl -u shadowtwin-forwarder -e` — the startup validation logs
+exactly which check (Kafka / Topics / Files / Permissions) failed. A
+Permissions failure is the only one that aborts start.
+
+> For forwarder-specific issues (permission denied on `alerts.json`,
+> missing `archives.json`, brokers down, duplicate events after a crash),
+> see the dedicated troubleshooting section in
+> [`forwarder/README.md`](../forwarder/README.md).
 
 ---
 

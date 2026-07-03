@@ -1,0 +1,40 @@
+[Unit]
+Description=ShadowTwin Forwarder - Wazuh NDJSON to Kafka
+Documentation=file:///opt/shadowtwin-forwarder/README.md
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=exec
+User=shadowtwin
+Group=shadowtwin
+# Wazuh log files are mode 0640, group 'wazuh' - grant read access.
+SupplementaryGroups=wazuh
+WorkingDirectory=/opt/shadowtwin-forwarder
+ExecStart=/opt/shadowtwin-forwarder/.venv/bin/python /opt/shadowtwin-forwarder/app.py --config /etc/shadowtwin-forwarder/config.yaml
+# Optional environment overrides (SHADOWTWIN_*), see .env.example.
+EnvironmentFile=-/etc/shadowtwin-forwarder/forwarder.env
+
+Restart=always
+RestartSec=5
+SyslogIdentifier=shadowtwin-forwarder
+# Shutdown flushes Kafka for up to 30 s; give it headroom before SIGKILL.
+KillSignal=SIGTERM
+TimeoutStopSec=45
+
+# Creates /var/lib/shadowtwin-forwarder and /var/log/shadowtwin-forwarder
+# owned by the service user (matches the paths in config.yaml).
+StateDirectory=shadowtwin-forwarder
+LogsDirectory=shadowtwin-forwarder
+
+# Hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+
+[Install]
+WantedBy=multi-user.target

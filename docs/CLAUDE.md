@@ -30,7 +30,11 @@ list.
 
 - `go-agent-v0/` — Go. **Archived**, superseded by Wazuh. Original custom
   telemetry collector + mTLS shipper. See go-agent-v0/README.md.
+- `forwarder/` — Python. **Production.** Tails Wazuh's NDJSON logs and ships
+  them to Kafka; runs as the `shadowtwin-forwarder` systemd service. The
+  ingestion edge (Wazuh → Forwarder → Kafka). See forwarder/README.md.
 - `ingestor/` — Normalizes Wazuh alerts into the PostgreSQL findings store.
+  (Planned — the Kafka consumer that reads what `forwarder/` produces.)
 - `graph/` — Python. Neo4j schema + discovery loaders (env graph).
 - `threat-intel/` — Python. KEV/EPSS/OSV/ATT&CK ingestion + graph correlation.
 - `evaluator/` — Python. Triage agent for the ambiguous residue rules can't resolve.
