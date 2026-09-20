@@ -11,9 +11,9 @@
 > the local-only, gitignored [`INFRASTRUCTURE.md`](INFRASTRUCTURE.md) for
 > those.
 
-**Last updated:** 2026-07-03
-**Version:** v0.2.0
-**Project stage:** Ingestion layer production-ready
+**Last updated:** 2026-09-20
+**Version:** v1.0.0
+**Project stage:** Scope frozen at the ingestion layer — shipped
 
 ---
 
@@ -23,10 +23,11 @@
 |---|---|
 | Infrastructure | `██████████` 100% |
 | Data pipeline | `██████████` 100% |
-| AI | `██░░░░░░░░` 20% |
-| Database | `░░░░░░░░░░` 0% |
-| Dashboard | `░░░░░░░░░░` 0% |
-| Agents (Evaluator/Attacker/Defender) | `░░░░░░░░░░` 0% |
+| CI / tests | `██████████` 100% |
+
+The AI, database, dashboard and agent rows were removed: those components
+were never started and are no longer planned. See
+[`DECISIONS.md`](DECISIONS.md) and [`archive/`](archive/).
 
 ---
 
@@ -92,17 +93,20 @@ is treated as final.
 
 ## Current work
 
-**Kicking off the backend / consumer layer (Roadmap Phase 2).**
+**None — the project is scope-frozen and released at v1.0.0.**
 
-- The ingestion edge (Wazuh → Forwarder → Kafka) is now production-grade
-  and hands-off. Next is a **Kafka consumer** that reads `wazuh-alerts` /
-  `wazuh-logs`, normalizes events, and lands them in PostgreSQL as findings.
+The ingestion edge (Wazuh → Forwarder → Kafka) is complete, tested in CI,
+and running hands-off as a systemd service. On 2026-09-20 the remaining
+platform components (Evaluator, Attacker, Defender, environment graph,
+threat intel, lab, benchmark, frontend) were formally dropped rather than
+carried as indefinite aspiration — see [`DECISIONS.md`](DECISIONS.md).
 
-## Next milestone
+## Possible extensions
 
-**Kafka consumer → PostgreSQL findings store** (planned for a dedicated
-consumer host — see `INFRASTRUCTURE.md`). It consumes the existing topics
-without changing the ingestion architecture already in place.
+Not planned, but consistent with the frozen scope if ever picked up — a
+**Kafka consumer** reading `wazuh-alerts` / `wazuh-logs`, normalizing
+events and landing them in a findings store. That extends the existing
+pipeline rather than reviving the archived platform.
 
 ## Blockers
 
@@ -113,11 +117,13 @@ None.
 None open. (The forwarder's manual-start limitation is resolved — it's a
 systemd service now.)
 
-## Success criteria (next milestone)
+## Definition of done (met at v1.0.0)
 
-A consumer reads both topics, normalizes each event, and writes a row to
-the findings store — with the same at-least-once discipline the forwarder
-already guarantees.
+- Forwarder streams both Wazuh logs to Kafka with at-least-once delivery ✅
+- Survives rotation, truncation, deletion, broker outage, crash, reboot ✅
+- Runs unattended as a systemd service with health checks ✅
+- 44-assertion fault-injection suite passing in CI on every push ✅
+- Every document describes only what exists ✅
 
 ## Notes
 

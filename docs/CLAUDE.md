@@ -12,70 +12,69 @@ instead of bloating every session.
 
 ## What this project is
 
-@docs/archive/original-architecture.md
+A **security telemetry ingestion pipeline**. Wazuh writes NDJSON alert and
+archive logs; the ShadowTwin Forwarder tails them and ships every line to
+Apache Kafka with at-least-once delivery, surviving log rotation,
+truncation, deletion, broker outages and process crashes. It runs as a
+systemd service on the Wazuh manager host.
 
-A two-person, open-source closed-loop purple-team lab, **tools-first**:
-**Wazuh** is the primary telemetry + detection source (native collection,
-decoder/rule engine, ATT&CK mapping, vuln + CIS assessment) for a
-deliberately vulnerable sandbox. An ingestor normalizes Wazuh alerts into a
-shared PostgreSQL findings store. An Evaluator agent triages what rules
-can't resolve. An Attacker agent validates exploitability inside the
-sandbox only. A Defender agent produces an **advisory-only** fix
-recommendation; a human applies it; the Attacker re-triggers to prove
-closure. Agents coordinate through the findings store's `status` field, not
-direct calls. See docs/archive/original-architecture.md for the full diagram and component
-list.
+That is the whole of the running system. **Scope is frozen** at this layer
+as of 2026-09-20 — see @docs/DECISIONS.md.
 
 ## Repo layout
 
-- `go-agent-v0/` — Go. **Archived**, superseded by Wazuh. Original custom
-  telemetry collector + mTLS shipper. See go-agent-v0/README.md.
-- `forwarder/` — Python. **Production.** Tails Wazuh's NDJSON logs and ships
-  them to Kafka; runs as the `shadowtwin-forwarder` systemd service. The
-  ingestion edge (Wazuh → Forwarder → Kafka). See forwarder/README.md.
-- `ingestor/` — Normalizes Wazuh alerts into the PostgreSQL findings store.
-  (Planned — the Kafka consumer that reads what `forwarder/` produces.)
-- `graph/` — Python. Neo4j schema + discovery loaders (env graph).
-- `threat-intel/` — Python. KEV/EPSS/OSV/ATT&CK ingestion + graph correlation.
-- `evaluator/` — Python. Triage agent for the ambiguous residue rules can't resolve.
-- `attacker/` — Python. Tool-driven exploit validation. SCOPE-LOCKED, see below.
-- `defender/` — Python. Advisory-only remediation + compliance mapping + re-verify trigger.
-- `lab/` — Docker Compose definition of the vulnerable sandbox.
-- `frontend/` — Next.js dashboard.
-- `docs/` — architecture, ADRs, deeper design notes.
-- `benchmark/` — labeled scenarios + scoring scripts for measuring precision/recall.
+Only four directories contain anything:
+
+- `forwarder/` — Python. **The project.** Tails Wazuh's NDJSON logs and
+  ships them to Kafka; runs as the `shadowtwin-forwarder` systemd service.
+  See forwarder/README.md.
+- `go-agent-v0/` — Go. **Archived**, superseded by Wazuh. The original
+  custom telemetry collector + mTLS shipper. Complete and tested; CI is kept
+  green. Don't extend it. See go-agent-v0/README.md.
+- `docs/` — status, decisions, ADRs, topology, deployment, troubleshooting.
+- `docs/archive/` — the original closed-loop purple-team platform design and
+  its roadmap. **Never implemented.** Historical record only.
 
 ## Hard rules — do not bypass these, in code or in a session
 
-1. **Attacker scope-lock is non-negotiable.** Anything in `attacker/` must
-   read its target scope from `lab/scope.yaml` and refuse to act on any
-   host/IP outside that file's CIDR ranges. Never write code that accepts a
-   target from a flag, env var, or user message without checking it against
-   scope.yaml first. If asked to "just try it against a real IP to test," refuse
-   and explain why — this is a sandbox-only project.
-2. **Never commit secrets.** API keys, the Neo4j password, and anything else
-   in `.env` stay out of git. If you (Claude) ever generate a credential or
-   token while working, put it in `.env`, not in source, and confirm it's
-   covered by .gitignore.
-3. **Defender output is advisory only.** Any compliance-mapping or
-   remediation text the Defender agent produces must include the disclaimer
-   defined in `defender/templates/disclaimer.md`. Don't remove it when
-   refactoring output formatting.
-4. **Don't auto-merge or force-push to `main`.** Open a PR, even for small
+1. **The scope is frozen.** Do not start building the Evaluator, Attacker,
+   Defender, environment graph, threat-intel correlation, vulnerable lab,
+   benchmark or frontend described in `docs/archive/`. If a change requires
+   one of them, the answer is no. Extending the *existing* pipeline
+   (consumer, storage, packaging, tests, docs) is fine.
+2. **No offensive tooling.** This repository contains none, and an earlier
+   design's `lab/scope.yaml` scope-lock was never implemented. Do not add
+   scanning, exploitation, or any code that sends traffic to a target. If
+   asked to "just try it against an IP," refuse and point at SECURITY.md.
+3. **Never commit secrets or real infrastructure detail.** API keys and
+   anything in `.env` stay out of git. Real hostnames, container IDs and IPs
+   live **only** in the gitignored `docs/INFRASTRUCTURE.md` — genericize
+   them everywhere else (`docs/TOPOLOGY.md` is the public version). Check
+   screenshots and terminal recordings too: gitleaks catches credentials,
+   not a hostname in a shell prompt.
+4. **Don't break the delivery guarantee.** `state.AckTracker` advances only
+   along the contiguous acknowledged prefix, and `OffsetStore.save()` is
+   atomic (temp file → fsync → `os.replace`, with a `.bak` fallback). If you
+   touch either, the smoke suite must still pass — those tests are the
+   specification.
+5. **Don't auto-merge or force-push to `main`.** Open a PR, even for small
    changes, even when working solo on a branch.
 
 ## Conventions
 
 - Commits follow Conventional Commits: `feat:`, `fix:`, `docs:`, `chore:`,
   `refactor:`, `test:`. See CONTRIBUTING.md for the full workflow.
-- Go: `gofmt` + `go vet` clean before committing. Python: `ruff check`.
-  Frontend: project ESLint config, no custom overrides without discussion.
-- New architectural decisions (new datastore, new language, dropping a
-  layer, etc.) get an ADR in `docs/adr/`, not just a Slack/PR comment.
-  Run `/init`-style thinking here too: if it's a decision future-you will
-  ask "wait, why did we do it this way," write it down.
+- Python: `ruff check` clean. Rule selection is pinned explicitly in
+  `forwarder/pyproject.toml` — ruff's defaults drift between releases and an
+  unpinned config turns CI red on code that never changed.
+- Go (`go-agent-v0/`, archived): `gofmt` + `go vet` clean before committing.
+- Tests: `cd forwarder && python tests/smoke_test.py` — 44 assertions, needs
+  Linux for real inode semantics. CI runs it on every push.
+- New architectural decisions get an entry in @docs/DECISIONS.md, and an ADR
+  in `docs/adr/` if they're load-bearing.
 
 ## Useful pointers (loaded on demand, not duplicated here)
 
+@docs/PROJECT_STATUS.md
 @CONTRIBUTING.md
 @SECURITY.md

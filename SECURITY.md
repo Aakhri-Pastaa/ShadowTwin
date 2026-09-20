@@ -1,46 +1,63 @@
 # Security policy
 
-This project builds security tooling, including an agent that performs
-exploit validation. Two different things live in this file: how to report a
-vulnerability *in our code*, and the rules for *using* the offensive
-component responsibly.
+## Scope of this project
 
-## Reporting a vulnerability in this project
+ShadowTwin is a **security telemetry ingestion pipeline**: it tails Wazuh's
+NDJSON alert logs and forwards them to Apache Kafka. That is the whole of
+the running code, in [`forwarder/`](forwarder/).
 
-If you find a security issue in the host agent, the platform code, or the
-frontend (e.g. the mTLS handshake, the ingest endpoint, credential
-handling), please report it privately rather than opening a public issue:
+An earlier design described an offensive "Attacker" agent that would perform
+real exploit attempts against a bundled lab, scope-locked to a
+`lab/scope.yaml` file. **That agent was never built, and neither was the
+scope-lock.** The design is archived at
+[`docs/archive/original-architecture.md`](docs/archive/original-architecture.md)
+and the decision to stop is recorded in
+[`docs/DECISIONS.md`](docs/DECISIONS.md). This repository contains **no
+offensive tooling** and performs no scanning, exploitation, or network
+activity against any target.
+
+The only network behaviour in the codebase is an outbound Kafka producer
+connection to a broker you configure.
+
+## Reporting a vulnerability
+
+If you find a security issue in the forwarder — the file tailer, the Kafka
+producer, the state persistence, the installer, or the systemd unit — please
+report it privately rather than opening a public issue:
 
 - Open a [GitHub private security advisory](../../security/advisories/new)
-  on this repo, or
-- Email <maintainer-email-here> directly.
+  on this repository.
 
-We'll acknowledge reports within a reasonable timeframe and credit you in
-the fix unless you'd rather stay anonymous. This is a small open-source
-project run by two people, not a company with an SLA — please be patient.
+This is a small open-source portfolio project, not a company with an SLA —
+please be patient. Reporters are credited in the fix unless they'd rather
+stay anonymous.
 
-## Responsible use of the Attacker agent
+## Operational notes for anyone running it
 
-This project's Attacker agent performs real exploit attempts (recon,
-payload delivery, privilege escalation) using established tools (nmap,
-sqlmap, Metasploit, etc.) orchestrated by an LLM. It is built to operate
-**exclusively** against the bundled lab environment defined in
-`lab/scope.yaml`.
+The forwarder is designed to run on the Wazuh manager host, where it needs
+read access to `/var/ossec/logs`. A few things are worth knowing before you
+deploy it:
 
-- Do not point it at any system you don't own or don't have explicit,
-  documented authorization to test.
-- Do not remove, weaken, or bypass the scope-lock check in `attacker/`.
-  If you're modifying that code, the scope check is the one thing that
-  must survive every refactor.
-- This project is for research, education, and portfolio purposes. It is
-  not a commercial product and carries no warranty of any kind — see
-  LICENSE.
-- If you build on this code to target real infrastructure, that is your
-  own legal responsibility, governed by the laws of your jurisdiction and
-  any applicable computer-misuse statutes. We do not support or endorse
-  that use.
+- It runs as a dedicated unprivileged system user (`shadowtwin`), added to
+  the `wazuh` group for read access. It does not need root at runtime — only
+  the installer does.
+- Wazuh alert logs contain security-sensitive data (hostnames, usernames,
+  file paths, command lines). The forwarder ships them verbatim to Kafka.
+  **Secure the broker accordingly** — the shipped configuration uses a
+  plaintext connection with no authentication, which is appropriate only on
+  a trusted network segment.
+- TLS and SASL to Kafka are **not** implemented. See the limitations section
+  of the [README](README.md).
+- Configuration lives in `/etc/shadowtwin-forwarder/config.yaml` and is not
+  overwritten on upgrade.
 
 ## Supported versions
 
-Pre-1.0, there are no maintained release branches — only `main`. Security
-fixes land there.
+Pre-1.0 there were no maintained release branches. From v1.0.0 onward, fixes
+land on `main`. This project is scope-frozen: expect maintenance fixes, not
+new features.
+
+## No warranty
+
+This is a research and portfolio project. It carries no warranty of any
+kind — see [LICENSE](LICENSE).
