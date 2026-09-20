@@ -12,7 +12,7 @@ instead of bloating every session.
 
 ## What this project is
 
-@docs/architecture.md
+@docs/archive/original-architecture.md
 
 A two-person, open-source closed-loop purple-team lab, **tools-first**:
 **Wazuh** is the primary telemetry + detection source (native collection,
@@ -23,7 +23,7 @@ can't resolve. An Attacker agent validates exploitability inside the
 sandbox only. A Defender agent produces an **advisory-only** fix
 recommendation; a human applies it; the Attacker re-triggers to prove
 closure. Agents coordinate through the findings store's `status` field, not
-direct calls. See docs/architecture.md for the full diagram and component
+direct calls. See docs/archive/original-architecture.md for the full diagram and component
 list.
 
 ## Repo layout

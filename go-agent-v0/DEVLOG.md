@@ -282,7 +282,7 @@ archived, and superseded by Wazuh as the project's telemetry/detection
 source. No code changes — the agent is preserved as-is.
 
 **Why.** See the root [`DEVLOG.md`](../DEVLOG.md) and
-[`docs/architecture.md`](../docs/architecture.md) for the rationale.
+[`docs/archive/original-architecture.md`](../docs/archive/original-architecture.md) for the rationale.
 
 **Refs.** PR #7.
 

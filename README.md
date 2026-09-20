@@ -74,10 +74,10 @@ Everything about how ShadowTwin is built and where it's going lives in
 | | |
 |---|---|
 | 📊 [PROJECT_STATUS](docs/PROJECT_STATUS.md) | What's actually running right now (living doc) |
-| 🗺️ [ROADMAP](docs/ROADMAP.md) | The phased plan |
-| 🏗️ [ARCHITECTURE](docs/architecture.md) · [TOPOLOGY](docs/TOPOLOGY.md) | Target design + infrastructure diagram |
+| 🏗️ [TOPOLOGY](docs/TOPOLOGY.md) | Infrastructure diagram |
 | 🧭 [DECISIONS](docs/DECISIONS.md) · [ADRs](docs/adr/) | Why things are the way they are |
-| 🧪 [AI](docs/AI.md) · [DEPLOYMENT](docs/DEPLOYMENT.md) · [TROUBLESHOOTING](docs/TROUBLESHOOTING.md) | Deep dives |
+| 🧪 [DEPLOYMENT](docs/DEPLOYMENT.md) · [TROUBLESHOOTING](docs/TROUBLESHOOTING.md) | Deep dives |
+| 🗄️ [archive/](docs/archive/) | The original platform design and roadmap — never built, kept for the record |
 
 ## ⚠️ Responsible use
 

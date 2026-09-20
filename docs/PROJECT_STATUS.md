@@ -2,7 +2,7 @@
 
 > **This is the living, as-built status doc.** It describes what is
 > *actually running* right now, and gets updated every session. It will
-> often be ahead of or different from [`architecture.md`](architecture.md)
+> often be ahead of or different from [`archive/original-architecture.md`](archive/original-architecture.md)
 > (the target/aspirational design) — that's expected. When the two
 > diverge for more than a session or two, reconcile them or record why in
 > [`DECISIONS.md`](DECISIONS.md).
@@ -62,10 +62,10 @@ Streamlit
 
 Note: this concrete pipeline is the near-term build path toward the
 Wazuh → ingestor → PostgreSQL findings store → Evaluator → Attacker →
-Defender design in `architecture.md`. Kafka + the Forwarder sit in front of
+Defender design in `archive/original-architecture.md`. Kafka + the Forwarder sit in front of
 what that doc calls the "ingestor"; the "AI consumer" is where
 Evaluator-style triage will eventually plug in. **Open discrepancy:**
-`architecture.md` and `CLAUDE.md` currently say the frontend is Next.js;
+`archive/original-architecture.md` and `CLAUDE.md` say the frontend is Next.js;
 this pipeline uses Streamlit. Not yet reconciled — flag before either doc
 is treated as final.
 

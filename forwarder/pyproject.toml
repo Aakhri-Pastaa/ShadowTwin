@@ -29,3 +29,8 @@ version = { attr = "version.__version__" }
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+
+# Select rules explicitly: ruff's default set changes between releases, and an
+# unpinned default silently turns CI red on code that never changed.
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]

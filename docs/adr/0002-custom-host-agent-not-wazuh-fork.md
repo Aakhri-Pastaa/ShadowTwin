@@ -34,4 +34,4 @@ We give up Wazuh's years of collector maturity and its existing rule
 ecosystem. In exchange: no GPLv2 entanglement, a small auditable codebase,
 and a cross-platform single binary that's easier to reason about and to
 show in a portfolio context. Windows support (Sysmon-based) is deferred to
-a later milestone — see `docs/architecture.md` layer 1 phasing.
+a later milestone — see `docs/archive/original-architecture.md` layer 1 phasing.
