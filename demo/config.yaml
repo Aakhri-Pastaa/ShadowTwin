@@ -1,0 +1,42 @@
+# Forwarder configuration for the demo environment.
+#
+# Differs from the production template in forwarder/config.yaml in three ways:
+#   - the broker is the compose service 'kafka' (also set via the
+#     SHADOWTWIN_KAFKA_BOOTSTRAP_SERVERS env var, which takes precedence),
+#   - start_from is 'beginning' so nothing written before the forwarder
+#     started is skipped, which keeps the consumer's gap audit meaningful,
+#   - logging goes to the console so `docker compose logs` shows it.
+
+kafka:
+  bootstrap_servers:
+    - kafka:9092
+  client_id: shadowtwin-forwarder-demo
+  compression: lz4
+  linger_ms: 50
+  batch_size: 131072
+  message_timeout_ms: 0    # 0 = retry forever; never drop a queued event
+  queue_max_messages: 100000
+
+topics:
+  alerts: wazuh-alerts
+  archives: wazuh-logs
+
+files:
+  alerts: /var/ossec/logs/alerts/alerts.json
+  archives: /var/ossec/logs/archives/archives.json
+
+watcher:
+  poll_interval: 0.25
+  batch_lines: 500
+  start_from: beginning
+
+logging:
+  level: INFO
+  file: /var/log/shadowtwin-forwarder/forwarder.log
+  max_bytes: 10485760
+  backup_count: 3
+  console: true
+
+state:
+  file: /var/lib/shadowtwin-forwarder/state.json
+  save_interval: 2.0

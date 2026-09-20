@@ -1,0 +1,17 @@
+# Repo-wide lint configuration.
+#
+# Rules are selected explicitly on purpose: ruff's default set changes between
+# releases, and an unpinned default silently turns CI red on code that never
+# changed. Adding a rule here should be a deliberate act, not an upgrade
+# side effect.
+
+line-length = 100
+target-version = "py312"
+
+# Both are flat module directories rather than installed packages, so isort
+# needs telling where first-party imports live. Without this, `import config`
+# inside forwarder/ is classed as third-party and the ordering flips.
+src = ["forwarder", "demo"]
+
+[lint]
+select = ["E", "F", "W", "I", "UP", "B"]

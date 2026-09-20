@@ -7,6 +7,7 @@
 **A Python service that streams Wazuh's security alerts into Apache Kafka with at-least-once delivery, surviving log rotation, truncation, broker outages and process crashes.**
 
 [![Forwarder CI](https://github.com/Aakhri-Pastaa/ShadowTwin/actions/workflows/forwarder.yml/badge.svg)](https://github.com/Aakhri-Pastaa/ShadowTwin/actions/workflows/forwarder.yml)
+[![Demo CI](https://github.com/Aakhri-Pastaa/ShadowTwin/actions/workflows/demo.yml/badge.svg)](https://github.com/Aakhri-Pastaa/ShadowTwin/actions/workflows/demo.yml)
 [![Release](https://img.shields.io/github/v/release/Aakhri-Pastaa/ShadowTwin?color=1f6feb)](https://github.com/Aakhri-Pastaa/ShadowTwin/releases/latest)
 [![License](https://img.shields.io/badge/License-Apache_2.0-1f6feb.svg)](LICENSE)
 [![Scope](https://img.shields.io/badge/scope-frozen-8957e5.svg)](docs/DECISIONS.md)
@@ -83,6 +84,27 @@ Duplicates are possible, gaps are not — consumers must deduplicate, typically
 on the Wazuh alert ID. Exactly-once would need a transactional sink and
 two-phase commit across a file and a network boundary; a duplicate alert is
 an inconvenience, a missing one is missing evidence.
+
+## Try it
+
+The whole pipeline runs on one machine with no Wazuh installation:
+
+```bash
+cd demo && docker compose up --build
+```
+
+Kafka, a generator writing Wazuh-shaped NDJSON, the forwarder, and a consumer
+that prints what arrives. Every alert carries a monotonic sequence number, so
+the consumer can audit for loss rather than assert it:
+
+```
+[audit] received=312 unique=312 highest=312 duplicates=0 | NO GAPS
+```
+
+The generator rotates and truncates the log while it runs. Stop the broker
+mid-stream with `docker compose stop kafka`, start it again, and the audit
+still reports `NO GAPS` — a non-zero `duplicates` count is at-least-once
+working as specified. See [`demo/`](demo/).
 
 ## Install
 
@@ -201,6 +223,7 @@ glue. Still at [`go-agent-v0/`](go-agent-v0/), still green in CI.
 | 🧭 [DECISIONS](docs/DECISIONS.md) · [ADRs](docs/adr/) | Why things are the way they are |
 | 🧰 [forwarder/README](forwarder/README.md) | Config reference, operations, troubleshooting |
 | 🧪 [DEPLOYMENT](docs/DEPLOYMENT.md) · [TROUBLESHOOTING](docs/TROUBLESHOOTING.md) | Deep dives |
+| 🧪 [demo/](demo/) | One-command environment, no Wazuh needed |
 | 📓 [DEVLOG](DEVLOG.md) | Build history |
 | 🗄️ [archive/](docs/archive/) | The original design — never implemented |
 

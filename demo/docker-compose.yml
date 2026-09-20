@@ -1,0 +1,114 @@
+# ShadowTwin demo environment — the whole pipeline on one machine.
+#
+#   docker compose up --build
+#
+# No Wazuh installation is needed: alert-generator writes Wazuh-shaped NDJSON
+# into the shared volume the forwarder tails, and rotates/truncates it on a
+# schedule so the cases that break naive forwarders happen live.
+#
+# Teardown, including the volumes, is: docker compose down -v
+
+name: shadowtwin-demo
+
+services:
+  kafka:
+    image: apache/kafka:4.0.0
+    container_name: shadowtwin-demo-kafka
+    environment:
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_LISTENERS: PLAINTEXT://:9092,CONTROLLER://:9093
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      # Single-node demo: one replica of everything.
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      # Topics are created explicitly by kafka-init, so the forwarder's
+      # "Topics" startup check is a real check rather than a side effect.
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+    healthcheck:
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1"]
+      interval: 5s
+      timeout: 10s
+      retries: 20
+      start_period: 15s
+
+  kafka-init:
+    image: apache/kafka:4.0.0
+    container_name: shadowtwin-demo-kafka-init
+    depends_on:
+      kafka:
+        condition: service_healthy
+    entrypoint: ["/bin/bash", "-c"]
+    command:
+      - |
+        set -e
+        for topic in wazuh-alerts wazuh-logs; do
+          /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 \
+            --create --if-not-exists --topic "$$topic" \
+            --partitions 1 --replication-factor 1
+        done
+        echo "topics ready:"
+        /opt/kafka/bin/kafka-topics.sh --bootstrap-server kafka:9092 --list
+    restart: "no"
+
+  alert-generator:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: shadowtwin-demo-generator
+    command: ["python", "alert_generator.py"]
+    environment:
+      DEMO_RATE: "${DEMO_RATE:-5}"
+      DEMO_ROTATE_EVERY: "${DEMO_ROTATE_EVERY:-120}"
+      DEMO_TRUNCATE_EVERY: "${DEMO_TRUNCATE_EVERY:-300}"
+    volumes:
+      - wazuh-logs:/var/ossec/logs
+    restart: unless-stopped
+
+  forwarder:
+    build:
+      context: ../forwarder
+      dockerfile: Dockerfile
+    container_name: shadowtwin-demo-forwarder
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+      alert-generator:
+        condition: service_started
+    environment:
+      SHADOWTWIN_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      SHADOWTWIN_LOG_LEVEL: "${SHADOWTWIN_LOG_LEVEL:-INFO}"
+    volumes:
+      - wazuh-logs:/var/ossec/logs:ro
+      - ./config.yaml:/etc/shadowtwin-forwarder/config.yaml:ro
+      - forwarder-state:/var/lib/shadowtwin-forwarder
+      - forwarder-logs:/var/log/shadowtwin-forwarder
+    # Must exceed the 30 s Kafka flush the forwarder performs on shutdown.
+    stop_grace_period: 45s
+    restart: unless-stopped
+
+  consumer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: shadowtwin-demo-consumer
+    command: ["python", "consumer.py"]
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+    environment:
+      DEMO_BOOTSTRAP: kafka:9092
+      DEMO_TOPICS: wazuh-alerts
+      DEMO_QUIET: "${DEMO_QUIET:-0}"
+    restart: unless-stopped
+
+volumes:
+  wazuh-logs:
+  forwarder-state:
+  forwarder-logs:
