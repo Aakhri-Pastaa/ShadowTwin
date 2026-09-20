@@ -212,7 +212,7 @@ class FakeProducer:
 
 producer_mod.Producer = FakeProducer
 
-import app     # noqa: E402
+import app  # noqa: E402
 import checks  # noqa: E402
 
 e2e = tempfile.mkdtemp()

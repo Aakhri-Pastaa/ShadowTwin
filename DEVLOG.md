@@ -35,7 +35,7 @@ can't resolve. An Attacker agent validates exploitability inside the
 sandbox only and attaches proof. A Defender agent produces an
 **advisory-only** fix recommendation; a human applies it; the Attacker
 re-triggers to prove closure. There is **no auto-remediation**. See
-`docs/architecture.md` for the full picture.
+`docs/archive/original-architecture.md` for the full picture.
 
 **Where we started:** the project's first design used a custom Go host
 agent as the telemetry source (see [`go-agent-v0/DEVLOG.md`](go-agent-v0/DEVLOG.md)
@@ -44,10 +44,11 @@ archived at [`go-agent-v0/`](go-agent-v0/) as reference and as the
 project's starting point.
 
 **Where we are now:** the project has pivoted to a Wazuh-based architecture.
-Wazuh is deployed as the telemetry/detection source; the docs (README,
-`docs/architecture.md`, `CLAUDE.md`) describe the target design. The
-ingestor, PostgreSQL findings store, Evaluator, Attacker, Defender, and
-frontend are not built yet.
+Wazuh is deployed as the telemetry/detection source and the forwarder ships
+its alerts into Kafka. The ingestor, PostgreSQL findings store, Evaluator,
+Attacker, Defender and frontend were never built, and as of 2026-09-20 are
+not planned — scope is frozen at the ingestion layer. The original design is
+archived at [`docs/archive/`](docs/archive/).
 
 ---
 
@@ -159,9 +160,10 @@ health check passed.
 
 ## Upcoming / backlog
 
-See [`docs/ROADMAP.md`](docs/ROADMAP.md) for the phased plan and
-[`docs/TODO.md`](docs/TODO.md) for the tactical next items — kept there now
-instead of duplicated here so there's one place to update.
+Scope was frozen at the ingestion layer on 2026-09-20 — there is no
+backlog. The original phased plan is archived at
+[`docs/archive/ROADMAP.md`](docs/archive/ROADMAP.md); see
+[`docs/DECISIONS.md`](docs/DECISIONS.md) for the reasoning.
 
 ## Decision index (ADRs)
 

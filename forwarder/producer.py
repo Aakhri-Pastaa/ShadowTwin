@@ -15,7 +15,7 @@ Delivery guarantees, in combination with :class:`state.AckTracker`:
 from __future__ import annotations
 
 import logging
-from typing import Callable
+from collections.abc import Callable
 
 from confluent_kafka import KafkaError, KafkaException, Message, Producer
 

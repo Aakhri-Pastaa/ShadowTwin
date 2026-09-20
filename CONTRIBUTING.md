@@ -1,7 +1,12 @@
 # Contributing
 
-This is currently a two-person project, but the workflow below is written
-to scale cleanly if anyone else joins later.
+This is a small, scope-frozen open-source project. The workflow below is
+written to stay usable if anyone else joins later.
+
+Before proposing a feature, read the scope note in
+[`docs/DECISIONS.md`](docs/DECISIONS.md): the platform components in
+`docs/archive/` are not going to be built. Fixes, tests, packaging and
+documentation for the existing pipeline are welcome.
 
 ## Setup
 
@@ -32,9 +37,8 @@ to scale cleanly if anyone else joins later.
    - `docs: add ADR for Neo4j choice`
    - `chore:`, `refactor:`, `test:` as appropriate.
 5. `git push -u origin feat/short-description`, then open a PR against `main`.
-6. Request review from the other person. Don't merge your own PR without a
-   review, even on a two-person team — it's the cheapest way to keep shared
-   understanding of the codebase as it grows.
+6. Don't merge your own PR without a review where there's someone to ask —
+   it's the cheapest way to keep shared understanding of the codebase.
 7. Squash-merge once approved. Delete the branch.
 
 ## Branch naming

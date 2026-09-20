@@ -1,9 +1,24 @@
+> # ⚠️ ARCHIVED — never implemented
+>
+> This describes the **original target design** for ShadowTwin: a closed-loop
+> purple-team platform with an ingestor, environment graph, threat-intel
+> correlation, and Evaluator / Attacker / Defender agents. **None of those
+> components were built.** The project's scope was frozen at the ingestion
+> layer on 2026-09-20 — see [`../DECISIONS.md`](../DECISIONS.md).
+>
+> It is kept for the record, because the reasoning behind the design (and the
+> decision to stop) is part of the project's history. For what the repository
+> actually contains, see the root `README.md` and
+> [`../PROJECT_STATUS.md`](../PROJECT_STATUS.md).
+
+---
+
 # Architecture
 
 > **Pivoted 2026** — this doc describes the current, Wazuh-based design. The
 > project's first design used a custom Go host agent as the telemetry
-> source; that agent is archived at [`go-agent-v0/`](../go-agent-v0/) and
-> its rationale is preserved in `docs/adr/0002-custom-host-agent-not-wazuh-fork.md`.
+> source; that agent is archived at [`go-agent-v0/`](../../go-agent-v0/) and
+> its rationale is preserved in `../adr/0002-custom-host-agent-not-wazuh-fork.md`.
 > See `DEVLOG.md` for the pivot history.
 
 One-paragraph version: **Wazuh** ships telemetry and detections (native
@@ -23,16 +38,15 @@ call each other directly — they coordinate through the findings store's
 `status` field. A frontend renders the graph, the live agent reasoning, and
 reports.
 
-![architecture diagram](images/architecture.png)
-<!-- Drop the diagram image here, or re-export it from the conversation
-     where it was designed and keep this path in sync. -->
+<!-- A diagram was referenced here (images/architecture.png) but never
+     committed; the link is removed rather than left broken. -->
 
 ## Layers
 
 1. **Wazuh** — telemetry + detection source. Native multi-platform
    collection, decoder/rule engine, MITRE ATT&CK mapping, vulnerability
    detection, CIS benchmark assessment. Replaces the archived
-   [`go-agent-v0/`](../go-agent-v0/) custom collector: "reuse the mature
+   [`go-agent-v0/`](../../go-agent-v0/) custom collector: "reuse the mature
    tool, build only the differentiating glue."
 2. **Ingestor** (`ingestor/`) — normalizes Wazuh alerts into the shared
    PostgreSQL findings store (the coordination point between agents).
@@ -54,4 +68,4 @@ reports.
 ## Decisions
 
 Why each non-obvious choice was made lives in `docs/adr/`, not here — this
-file is a map, not the territory. Start at `docs/adr/0001-record-architecture-decisions.md`.
+file is a map, not the territory. Start at `../adr/0001-record-architecture-decisions.md`.

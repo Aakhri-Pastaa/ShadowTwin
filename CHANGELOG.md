@@ -2,10 +2,61 @@
 
 All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-versioning follows [Semantic Versioning](https://semver.org/) once we cut
-a first tagged release.
+versioning follows [Semantic Versioning](https://semver.org/).
+
+## [1.0.0] - 2026-09-20
+
+Scope frozen at the ingestion layer. What ships is the **ShadowTwin
+Forwarder**: a Python service that tails Wazuh's NDJSON alert logs and
+streams them to Apache Kafka with at-least-once delivery.
+
+### Added
+- `.github/workflows/forwarder.yml` — ruff + the 44-assertion smoke suite on
+  every push. Until now the only component with real code had no CI at all.
+- `docs/archive/` — the original closed-loop platform design
+  (`original-architecture.md`) and its roadmap, each headed with a note that
+  they were never implemented.
+- Explicit ruff rule selection in `forwarder/pyproject.toml`. The previous
+  config inherited ruff's defaults, which drift between releases and
+  reported 11 errors on code that had not changed.
+
+### Changed
+- **Rewrote `README.md`** around what the repository actually contains. It
+  previously described a closed-loop purple-team platform of which no
+  component existed.
+- **Rewrote `SECURITY.md`.** It described an offensive "Attacker agent" and
+  a `lab/scope.yaml` scope-lock — a safety control that was never
+  implemented — and carried a `<maintainer-email-here>` placeholder. It now
+  covers the forwarder only, and states plainly that the repository contains
+  no offensive tooling.
+- Rewrote `docs/CLAUDE.md`: it listed a repo layout of twelve directories,
+  nine of which do not exist.
+- `docs/PROJECT_STATUS.md` → v1.0.0; progress rows for unbuilt components
+  removed rather than left at 0%.
+- Retargeted the hero banner and updated `CONTRIBUTING.md` and the PR
+  template to match the frozen scope.
+- Two ruff autofixes in `forwarder/`: deprecated `typing.Callable` →
+  `collections.abc.Callable`, and whitespace. No behaviour change.
+
+### Removed
+- `.github/workflows/frontend.yml` and `.github/workflows/python-services.yml`
+  — both watched paths that do not exist (`frontend/`, `graph/`,
+  `threat-intel/`, `evaluator/`, `attacker/`, `defender/`), so neither had
+  ever run.
+- `docs/API.md`, `docs/AI.md`, `docs/TODO.md` — placeholders for components
+  that were never started.
+
+### Fixed
+- Every internal documentation link. A link check now reports zero broken
+  targets, including a `docs/images/architecture.png` reference to an image
+  that was never committed.
 
 ## [Unreleased]
+
+Nothing. The project is scope-frozen.
+
+<details>
+<summary>Pre-1.0 history</summary>
 
 ### Added
 - **`forwarder/`** — the ShadowTwin Forwarder source is now in the monorepo:
@@ -41,3 +92,5 @@ a first tagged release.
 - Moved `CLAUDE.md` to `docs/CLAUDE.md` (no longer auto-loaded by Claude
   Code — see the note at the top of that file).
 - Rewrote the root `README.md` as a modern landing page.
+
+</details>

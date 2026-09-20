@@ -1,15 +1,27 @@
+> # ⚠️ ARCHIVED — not a plan
+>
+> This was the phased plan toward the design in
+> [`original-architecture.md`](original-architecture.md). Phase 1
+> (infrastructure + forwarder) shipped; **Phases 2–5 were never started and
+> are not planned.** Scope was frozen at the ingestion layer on 2026-09-20 —
+> see [`../DECISIONS.md`](../DECISIONS.md).
+>
+> Kept as a record of the original intent, not as future work.
+
+---
+
 # ShadowTwin Roadmap
 
 The master, phase-level plan. For tactical/next-PR items see
-[`TODO.md`](TODO.md); for what's actually running right now see
-[`PROJECT_STATUS.md`](PROJECT_STATUS.md).
+`TODO.md` (deleted); for what's actually running right now see
+[`../PROJECT_STATUS.md`](../PROJECT_STATUS.md).
 
 ## Phase 1 — Infrastructure
 
 - Wazuh
 - Kafka
 - ShadowTwin Forwarder — production-ready systemd service, source in
-  [`forwarder/`](../forwarder/)
+  [`forwarder/`](../../forwarder/)
 
 **Status:** ✅ Completed.
 
@@ -18,7 +30,7 @@ The master, phase-level plan. For tactical/next-PR items see
 ## Phase 2 — Backend
 
 - Kafka consumer (reads `wazuh-alerts` / `wazuh-logs`)
-- API layer (ingestor — see [`API.md`](API.md))
+- API layer (ingestor — `API.md`, deleted)
 - PostgreSQL findings store
 
 **Status:** 🔨 In progress — next up.
@@ -28,7 +40,7 @@ The master, phase-level plan. For tactical/next-PR items see
 ## Phase 3 — AI
 
 - Local model serving
-- AI evaluator / triage (see [`AI.md`](AI.md))
+- AI evaluator / triage (`AI.md`, deleted)
 
 **Status:** Pending.
 

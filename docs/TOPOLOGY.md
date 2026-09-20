@@ -51,4 +51,4 @@ provider, or network layout — see the private `INFRASTRUCTURE.md` for that.
   `PROJECT_STATUS.md`.
 - This diagram covers only what's actually deployed or actively being
   built (`PROJECT_STATUS.md`'s "Completed"/"Current work"), not the full
-  target design in [`architecture.md`](architecture.md).
+  target design in [`archive/original-architecture.md`](archive/original-architecture.md).

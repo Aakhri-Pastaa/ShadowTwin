@@ -12,6 +12,41 @@ expected.
 
 ---
 
+## 2026-09-20
+
+**Decision.** Freeze the project's scope at the ingestion layer. The
+Evaluator, Attacker, Defender, environment graph, threat-intel correlation,
+vulnerable lab, benchmark, and frontend described in the original
+architecture are **not** going to be built. `docs/architecture.md` and
+`docs/ROADMAP.md` move to `docs/archive/`; `docs/API.md`, `docs/AI.md` and
+`docs/TODO.md` are deleted.
+
+**Reason.** Those components were placeholders for work that was never
+started, and documenting them as though they were planned made the
+repository describe a system that does not exist. Most damagingly,
+`SECURITY.md`, `README.md` and `CLAUDE.md` all referenced an attacker
+scope-lock reading `lab/scope.yaml` — a safety control that was never
+implemented. Removing the claims is the honest fix; building the platform is
+months of work this project is not going to get.
+
+What *was* built — the Wazuh → Kafka ingestion edge — is complete, tested
+and deployed, and stands on its own. The same judgement that archived the Go
+agent in favour of Wazuh (2026-07-02) applies here: keep what earns its
+place, archive the rest rather than carrying it as permanent aspiration.
+
+**Decision.** Add CI for `forwarder/`; delete the `frontend` and
+`python-services` workflows.
+
+**Reason.** Both watched paths that do not exist (`frontend/`, `graph/`,
+`threat-intel/`, `evaluator/`, `attacker/`, `defender/`), so neither ever
+ran — while the one component with real code and a 44-assertion test suite
+had no automated verification at all. Ruff rule selection is now pinned
+explicitly in `forwarder/pyproject.toml`: the previous config inherited
+ruff's defaults, which drift between releases and turn CI red on code that
+never changed.
+
+---
+
 ## 2026-07-03 (later)
 
 **Decision.** Ship the forwarder's config as `/etc/shadowtwin-forwarder/config.yaml`,
@@ -47,7 +82,7 @@ Streams doesn't give us as cleanly for this use case.
 
 **Reason.** Kafka UI is infrastructure/ops tooling — it exposes broker
 internals, not a product surface. Streamlit is the actual user-facing
-layer. (Note: this doesn't match `architecture.md`'s "Next.js frontend" —
+layer. (Note: this doesn't match `archive/original-architecture.md`'s "Next.js frontend" —
 see the open discrepancy flagged in `PROJECT_STATUS.md`.)
 
 ---
