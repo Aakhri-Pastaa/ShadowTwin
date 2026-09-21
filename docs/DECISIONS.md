@@ -12,6 +12,31 @@ expected.
 
 ---
 
+## 2026-09-21
+
+**Decision.** Reopen the scope-frozen forwarder for a correctness fix and
+release it as v1.1.0.
+
+**Reason.** The demo environment found a data-loss bug in v1.0.0: if the log
+rotated while the forwarder was stopped, it read the new file from zero and
+lost the old file's tail. That contradicted the one guarantee the project
+makes — "duplicates are possible, gaps are not" — in writing. The freeze
+excludes new features; it never excluded making the shipped behaviour match
+its documentation. Leaving a known gap under a no-gaps claim would have been
+the same mistake the freeze was meant to correct.
+
+**Decision.** Recover by inode, not by filename, and log what cannot be
+recovered.
+
+**Reason.** Rotation renames files, so a name recorded at checkpoint time
+means nothing after a restart; the inode is the file's identity. Generations
+rotated after the checkpointed one are queued by inode and resolved at the
+moment they are opened, because a name can point somewhere else by then. A
+rotated file that was deleted or compressed cannot be read, and pretending
+otherwise is worse than an explicit ERROR naming the offset that was lost.
+
+---
+
 ## 2026-09-20
 
 **Decision.** Freeze the project's scope at the ingestion layer. The
@@ -39,7 +64,7 @@ place, archive the rest rather than carrying it as permanent aspiration.
 
 **Reason.** Both watched paths that do not exist (`frontend/`, `graph/`,
 `threat-intel/`, `evaluator/`, `attacker/`, `defender/`), so neither ever
-ran — while the one component with real code and a 44-assertion test suite
+ran — while the one component with real code and a 42-check test suite
 had no automated verification at all. Ruff rule selection is now pinned
 explicitly in `forwarder/pyproject.toml`: the previous config inherited
 ruff's defaults, which drift between releases and turn CI red on code that

@@ -1,0 +1,5 @@
+README.md
+docker-compose.yml
+config.yaml
+__pycache__/
+*.py[cod]

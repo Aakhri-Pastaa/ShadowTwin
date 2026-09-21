@@ -44,6 +44,9 @@ class WatchedFile:
     name: str
     path: str
     topic: str
+    # Extra glob searched for this file's rotated-away generations on
+    # restart, in addition to "<path>.*". None = siblings only.
+    rotated_glob: str | None = None
 
 
 @dataclass(frozen=True)
@@ -111,8 +114,13 @@ def _bootstrap_servers(kafka: dict[str, Any]) -> tuple[str, ...]:
     return tuple(raw)
 
 
-def _watched_files(files: dict[str, Any], topics: dict[str, Any]) -> tuple[WatchedFile, ...]:
-    """Join the 'files' and 'topics' sections on their shared logical names."""
+def _watched_files(
+    files: dict[str, Any], topics: dict[str, Any], rotated: dict[str, Any]
+) -> tuple[WatchedFile, ...]:
+    """Join 'files', 'topics' and the optional 'rotated' on their logical names."""
+    unknown = sorted(set(rotated) - set(files))
+    if unknown:
+        raise ConfigError(f"rotated.{unknown[0]} does not match any entry under 'files'")
     watched: list[WatchedFile] = []
     for name, path in files.items():
         if not isinstance(path, str) or not path:
@@ -120,7 +128,11 @@ def _watched_files(files: dict[str, Any], topics: dict[str, Any]) -> tuple[Watch
         topic = topics.get(name)
         if not isinstance(topic, str) or not topic:
             raise ConfigError(f"files.{name} has no matching topic under 'topics'")
-        watched.append(WatchedFile(name=str(name), path=path, topic=topic))
+        rotated_glob = rotated.get(name)
+        if rotated_glob is not None and (not isinstance(rotated_glob, str) or not rotated_glob):
+            raise ConfigError(f"rotated.{name} must be a glob pattern string")
+        watched.append(WatchedFile(name=str(name), path=path, topic=topic,
+                                   rotated_glob=rotated_glob))
     if not watched:
         raise ConfigError("no files configured under 'files'")
     return tuple(watched)
@@ -143,6 +155,7 @@ def load_config(path: str) -> AppConfig:
     kafka = _mapping(data, "kafka")
     topics = _mapping(data, "topics")
     files = _mapping(data, "files")
+    rotated = _mapping(data, "rotated", required=False)
     watcher = _mapping(data, "watcher", required=False)
     log_cfg = _mapping(data, "logging", required=False)
     state = _mapping(data, "state", required=False)
@@ -189,7 +202,7 @@ def load_config(path: str) -> AppConfig:
 
     return AppConfig(
         kafka=kafka_cfg,
-        files=_watched_files(files, topics),
+        files=_watched_files(files, topics, rotated),
         watcher=WatcherConfig(
             poll_interval=poll_interval,
             batch_lines=batch_lines,

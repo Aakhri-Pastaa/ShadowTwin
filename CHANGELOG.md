@@ -4,6 +4,38 @@ All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioning follows [Semantic Versioning](https://semver.org/).
 
+## [1.1.0] - 2026-09-21
+
+### Fixed
+- **Data loss when a log rotated while the forwarder was stopped.** On
+  restart v1.0.0 saw a new inode at the path and read that file from byte 0,
+  losing everything written to the old one after the last checkpoint —
+  silently. It applied to clean stops as well as crashes. Found by the demo
+  environment: a `SIGKILL` across one rotation lost 30 alerts. The
+  checkpointed file is now found by inode among its rotated generations
+  (`<path>.*` plus an optional `rotated:` glob), drained from the saved
+  offset, then every later generation in order, then the live file. Verified
+  in the demo by a `SIGKILL` held across three rotations: 0 gaps.
+- A same-inode resume no longer continues mid-line when the inode has been
+  reused by a different file: the saved offset must follow a newline.
+- The suite count. v1.0.0's docs said 44 assertions; it executed 42 (the
+  number counted `check(` call sites, two of which sit in `try/except`
+  branches).
+
+### Added
+- `rotated:` config section — per-file glob for rotated generations.
+- An `ERROR` naming the inode and lost offset when a rotated file cannot be
+  found, instead of an `INFO` line.
+- `demo/` — one-command Docker environment: Kafka, a Wazuh-shaped generator
+  that rotates and truncates live, the forwarder, and a consumer that audits
+  the topic for gaps by sequence number. Plus a Docker-free integration test.
+- 17 checks (59 total), including the demo's reproduction as a regression
+  test.
+
+### Changed
+- Lint configuration moved to a repo-root `ruff.toml` with explicit rule
+  selection and `src` roots.
+
 ## [1.0.0] - 2026-09-20
 
 Scope frozen at the ingestion layer. What ships is the **ShadowTwin
@@ -11,7 +43,7 @@ Forwarder**: a Python service that tails Wazuh's NDJSON alert logs and
 streams them to Apache Kafka with at-least-once delivery.
 
 ### Added
-- `.github/workflows/forwarder.yml` — ruff + the 44-assertion smoke suite on
+- `.github/workflows/forwarder.yml` — ruff + the 42-check smoke suite on
   every push. Until now the only component with real code had no CI at all.
 - `docs/archive/` — the original closed-loop platform design
   (`original-architecture.md`) and its roadmap, each headed with a note that

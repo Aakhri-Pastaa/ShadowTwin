@@ -11,9 +11,10 @@
 > the local-only, gitignored [`INFRASTRUCTURE.md`](INFRASTRUCTURE.md) for
 > those.
 
-**Last updated:** 2026-09-20
-**Version:** v1.0.0
-**Project stage:** Scope frozen at the ingestion layer — shipped
+**Last updated:** 2026-09-21
+**Version:** v1.1.0
+**Project stage:** Scope frozen at the ingestion layer — shipped, with a
+one-command demo environment
 
 ---
 
@@ -117,12 +118,14 @@ None.
 None open. (The forwarder's manual-start limitation is resolved — it's a
 systemd service now.)
 
-## Definition of done (met at v1.0.0)
+## Definition of done
 
 - Forwarder streams both Wazuh logs to Kafka with at-least-once delivery ✅
 - Survives rotation, truncation, deletion, broker outage, crash, reboot ✅
+- Survives rotation *while stopped*, including several rotations ✅ (v1.1.0)
 - Runs unattended as a systemd service with health checks ✅
-- 44-assertion fault-injection suite passing in CI on every push ✅
+- 59-check fault-injection suite passing in CI on every push ✅
+- Reproducible without Wazuh: `cd demo && docker compose up --build` ✅
 - Every document describes only what exists ✅
 
 ## Notes
