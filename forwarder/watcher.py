@@ -14,10 +14,12 @@ never re-read or re-scanned; between polls the process sleeps.
 
 Rotation while the process is *stopped* is handled too. If the saved inode is
 no longer at the path, the rotated-away file is located by inode among its
-siblings (``<path>.*``) and an optional configured glob, drained from the
-saved offset, and only then is the new file read. If it cannot be found — it
-was deleted or compressed — the loss is logged with the exact offset rather
-than skipped silently.
+siblings (``<path>.*``) and an optional configured glob and drained from the
+saved offset; then every generation rotated after it is read in order, and
+only then the current file. Generations are tracked by inode, not name,
+because names shift on every rotation. If the saved file cannot be found —
+deleted or compressed — the loss is logged with the exact offset rather than
+skipped silently.
 """
 
 from __future__ import annotations
@@ -31,6 +33,9 @@ logger = logging.getLogger(__name__)
 
 # (raw line without trailing newline, inode it came from, byte offset after the line)
 Line = tuple[bytes, int, int]
+
+# Compressed generations get a new inode and are not NDJSON; never read them.
+_COMPRESSED = (".gz", ".bz2", ".xz", ".zst", ".zip")
 
 
 class FileTail:
@@ -52,6 +57,8 @@ class FileTail:
         self._inode = -1
         self._offset = 0
         self._missing_logged = False
+        # Inodes still to read, oldest first, after a rotation while stopped.
+        self._pending: list[int] = []
         self._open_initial(saved)
 
     @property
@@ -68,7 +75,7 @@ class FileTail:
         re-creation of the followed path. Returns an empty list when there
         is nothing new.
         """
-        if self._file is None and not self._open():
+        if self._file is None and not self._open_next():
             return []
         lines = self._read_lines(max_lines)
         if len(lines) >= max_lines:
@@ -88,13 +95,14 @@ class FileTail:
 
         if st.st_ino != self._inode:
             # Classic rotation: the path now points at a new file. Finish the
-            # old handle, then start the new file from the beginning.
+            # old handle, then move on — to the next generation still owed
+            # from a rotation while stopped, else the new file from the start.
             lines += self._read_lines(max_lines - len(lines))
             if len(lines) >= max_lines:
                 return lines  # keep draining the rotated-away file next poll
             lines += self._drain_final_partial()
             self._close("rotated (inode changed)")
-            if self._open():
+            if self._open_next():
                 lines += self._read_lines(max_lines - len(lines))
         elif st.st_size < self._offset:
             # Truncation (e.g. copytruncate rotation): start over.
@@ -138,16 +146,27 @@ class FileTail:
         found = self._find_rotated(inode, offset)
         if found is not None:
             rotated_path, handle = found
+            path_inode = self._inode if opened else None
             if opened:
                 self._file.close()
+            # Every generation rotated after this one was written after it,
+            # so it has a later mtime; older generations were already sent.
+            after = os.fstat(handle.fileno()).st_mtime_ns
+            later = sorted(
+                (st.st_mtime_ns, st.st_ino) for _, st in self._candidates()
+                if st.st_ino not in (inode, path_inode) and st.st_mtime_ns > after
+            )
+            self._pending = [ino for _, ino in later]
+            if path_inode is not None:
+                self._pending.append(path_inode)
             handle.seek(offset)
             self._file, self._inode, self._offset = handle, inode, offset
             logger.warning(
                 "%s: file was rotated while stopped; draining %s (inode %d) from "
-                "offset %d before continuing with the new file",
-                self.name, rotated_path, inode, offset,
+                "offset %d, then %d later generation(s)",
+                self.name, rotated_path, inode, offset, len(later),
             )
-            return  # poll() switches to the path once this handle is drained
+            return  # poll() moves through self._pending as each file drains
 
         if not opened:
             logger.warning("%s: saved file (inode %d) not found; waiting for %s",
@@ -161,8 +180,9 @@ class FileTail:
         else:
             logger.error(
                 "%s: file was rotated while stopped and the previous file (inode %d) "
-                "was not found (searched %s); anything written to it after offset %d "
-                "was NOT forwarded. Reading the new file from the start",
+                "was not found (searched %s); anything written to it after offset %d, "
+                "and to any file rotated after it, was NOT forwarded. Reading the "
+                "current file from the start",
                 self.name, inode, ", ".join(self._rotated_patterns()), offset,
             )
 
@@ -172,8 +192,8 @@ class FileTail:
             patterns.append(self._rotated_glob)
         return patterns
 
-    def _find_rotated(self, inode: int, offset: int) -> tuple[str, BinaryIO] | None:
-        """Locate the saved inode under a rotated name; returns (path, handle).
+    def _candidates(self):
+        """Yield (path, stat) for this file's rotated generations.
 
         Rename-rotation never crosses a filesystem, and inode numbers are only
         unique within one, so candidates on another device are ignored.
@@ -181,23 +201,62 @@ class FileTail:
         try:
             device = os.stat(os.path.dirname(os.path.abspath(self.path))).st_dev
         except OSError:
-            return None
+            return
+        own = os.path.abspath(self.path)
+        seen: set[str] = set()
         for pattern in self._rotated_patterns():
             for candidate in sorted(glob.glob(pattern)):
-                if os.path.abspath(candidate) == os.path.abspath(self.path):
+                absolute = os.path.abspath(candidate)
+                if absolute == own or absolute in seen or candidate.endswith(_COMPRESSED):
                     continue
+                seen.add(absolute)
                 try:
                     st = os.stat(candidate)
-                    if st.st_ino != inode or st.st_dev != device:
-                        continue
-                    handle = open(candidate, "rb")  # noqa: SIM115 - handed to the tailer
                 except OSError:
                     continue
-                if (os.fstat(handle.fileno()).st_ino == inode
-                        and _at_line_boundary(handle, offset)):
-                    return candidate, handle
-                handle.close()
+                if st.st_dev == device:
+                    yield candidate, st
+
+    def _find_rotated(self, inode: int, offset: int) -> tuple[str, BinaryIO] | None:
+        """Locate *inode* under a rotated name; returns (path, open handle)."""
+        for candidate, st in self._candidates():
+            if st.st_ino != inode:
+                continue
+            try:
+                handle = open(candidate, "rb")  # noqa: SIM115 - handed to the tailer
+            except OSError:
+                continue
+            if os.fstat(handle.fileno()).st_ino == inode and _at_line_boundary(handle, offset):
+                return candidate, handle
+            handle.close()
         return None
+
+    def _open_next(self) -> bool:
+        """Open the next generation still owed, else the path itself.
+
+        Resolved by inode at the moment of opening: a name like ``.1`` may
+        point at a different generation by now if the file rotated again.
+        """
+        while self._pending:
+            inode = self._pending.pop(0)
+            try:
+                at_path = os.stat(self.path).st_ino == inode
+            except OSError:
+                at_path = False
+            if at_path:
+                self._pending.clear()
+                return self._open()
+            found = self._find_rotated(inode, 0)
+            if found is None:
+                logger.error("%s: rotated file (inode %d) disappeared before it could be "
+                             "read; its contents were NOT forwarded", self.name, inode)
+                continue
+            rotated_path, handle = found
+            self._file, self._inode, self._offset = handle, inode, 0
+            logger.warning("%s: draining %s (inode %d), rotated while stopped",
+                           self.name, rotated_path, inode)
+            return True
+        return self._open()
 
     def _open(self) -> bool:
         """Open the followed path; True on success."""

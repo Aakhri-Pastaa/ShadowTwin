@@ -13,6 +13,7 @@ Two things make this useful beyond producing traffic:
 Environment:
     DEMO_RATE          alerts per second (default 5)
     DEMO_ROTATE_EVERY  rename-rotate after this many alerts, 0 disables (default 120)
+    DEMO_ROTATE_KEEP   rotated generations kept, like logrotate's `rotate N` (default 5)
     DEMO_TRUNCATE_EVERY truncate in place after this many alerts, 0 disables (default 300)
     DEMO_ALERTS_PATH   default /var/ossec/logs/alerts/alerts.json
     DEMO_ARCHIVES_PATH default /var/ossec/logs/archives/archives.json
@@ -36,6 +37,7 @@ from datetime import UTC, datetime
 RATE = float(os.environ.get("DEMO_RATE", "5"))
 ROTATE_EVERY = int(os.environ.get("DEMO_ROTATE_EVERY", "120"))
 TRUNCATE_EVERY = int(os.environ.get("DEMO_TRUNCATE_EVERY", "300"))
+KEEP = max(1, int(os.environ.get("DEMO_ROTATE_KEEP", "5")))
 ALERTS = os.environ.get("DEMO_ALERTS_PATH", "/var/ossec/logs/alerts/alerts.json")
 ARCHIVES = os.environ.get("DEMO_ARCHIVES_PATH", "/var/ossec/logs/archives/archives.json")
 SEQ_FILE = os.environ.get("DEMO_SEQ_FILE", "/var/ossec/logs/.demo_seq")
@@ -143,11 +145,16 @@ def save_seq(path: str, seq: int) -> None:
 
 
 def rotate(path: str) -> None:
-    """Rename-rotate: the path gets a new inode, the old handle goes stale.
+    """Rename-rotate like logrotate: .1 -> .2 ... -> .KEEP, then live -> .1.
 
-    This is the case that silently kills a forwarder that only follows a file
-    descriptor. Keeps one generation, like a minimal logrotate.
+    The path gets a new inode and any open handle goes stale — the case that
+    silently kills a forwarder following a file descriptor. Keeping several
+    generations means a forwarder that was down across more than one
+    rotation can still find every file it missed.
     """
+    for i in range(KEEP - 1, 0, -1):
+        if os.path.exists(f"{path}.{i}"):
+            os.replace(f"{path}.{i}", f"{path}.{i + 1}")
     try:
         os.replace(path, path + ".1")
     except FileNotFoundError:

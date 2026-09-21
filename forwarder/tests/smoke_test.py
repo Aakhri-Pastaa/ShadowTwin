@@ -227,6 +227,82 @@ check("configured glob finds a rotated file in another directory",
       _nums(te.poll(100)) == [3, 4, 5])
 te.close()
 
+# Two rotations while stopped: A holds the checkpoint, B was rotated after it,
+# C is live. v1.1.0 must read A's tail, all of B, then C, in that order.
+rd5 = tempfile.mkdtemp()
+rp5 = os.path.join(rd5, "alerts.json")
+
+
+def _logrotate(path):
+    """Shift generations like logrotate: .1 -> .2, live -> .1."""
+    if os.path.exists(path + ".1"):
+        os.rename(path + ".1", path + ".2")
+    os.rename(path, path + ".1")
+
+
+_write(rp5, 1, 4)
+ta = FileTail("alerts", rp5, "beginning", None)
+got = ta.poll(100)
+saved_multi = (got[1][1], got[1][2])   # checkpoint after line 2
+ta.close()
+time.sleep(0.02)
+_logrotate(rp5)                        # A -> .1
+_write(rp5, 5, 6)                      # B
+time.sleep(0.02)
+_logrotate(rp5)                        # A -> .2, B -> .1
+_write(rp5, 7, 8)                      # C, live
+tf = FileTail("alerts", rp5, "beginning", saved_multi)
+multi = []
+for _ in range(5):
+    multi += _nums(tf.poll(100))
+check("two rotations while stopped: A tail, B, C, in order, nothing lost",
+      multi == [3, 4, 5, 6, 7, 8], str(multi))
+tf.close()
+
+# A generation still owed is renamed again before it is opened: it must be
+# found by inode, not by the name it had when the tailer started.
+rd6 = tempfile.mkdtemp()
+rp6 = os.path.join(rd6, "alerts.json")
+_write(rp6, 1, 3)
+ta = FileTail("alerts", rp6, "beginning", None)
+got = ta.poll(100)
+saved_ren = (got[0][1], got[0][2])
+ta.close()
+time.sleep(0.02)
+_logrotate(rp6)                        # A -> .1
+_write(rp6, 4, 5)                      # B
+time.sleep(0.02)
+_logrotate(rp6)                        # A -> .2, B -> .1
+_write(rp6, 6, 6)                      # C
+tg = FileTail("alerts", rp6, "beginning", saved_ren)
+os.rename(rp6 + ".1", rp6 + ".9")      # B renamed after the tailer queued it
+renamed = []
+for _ in range(5):
+    renamed += _nums(tg.poll(100))
+check("owed generation renamed before opening: still found by inode",
+      renamed == [2, 3, 4, 5, 6], str(renamed))
+tg.close()
+
+# A compressed sibling with a newer mtime is not NDJSON and must be ignored.
+rd7 = tempfile.mkdtemp()
+rp7 = os.path.join(rd7, "alerts.json")
+_write(rp7, 1, 2)
+ta = FileTail("alerts", rp7, "beginning", None)
+got = ta.poll(100)
+saved_gz = (got[0][1], got[0][2])
+ta.close()
+os.rename(rp7, rp7 + ".1")
+_write(rp7, 3, 3)
+time.sleep(0.02)
+with open(rp7 + ".2.gz", "wb") as fh:
+    fh.write(b"\x1f\x8b\x08 not ndjson\n")
+th = FileTail("alerts", rp7, "beginning", saved_gz)
+gz = []
+for _ in range(3):
+    gz += _nums(th.poll(100))
+check("compressed sibling ignored", gz == [2, 3], str(gz))
+th.close()
+
 bp = os.path.join(rd3, "boundary.json")
 with open(bp, "wb") as fh:
     fh.write(b'{"n":1}\n{"n":2}')    # 15 bytes, final line has no newline
