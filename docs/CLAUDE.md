@@ -54,9 +54,11 @@ Only four directories contain anything:
    not a hostname in a shell prompt.
 4. **Don't break the delivery guarantee.** `state.AckTracker` advances only
    along the contiguous acknowledged prefix, and `OffsetStore.save()` is
-   atomic (temp file → fsync → `os.replace`, with a `.bak` fallback). If you
-   touch either, the smoke suite must still pass — those tests are the
-   specification.
+   atomic (temp file → fsync → `os.replace`, with a `.bak` fallback).
+   `watcher.FileTail` recovers rotations that happen while stopped by
+   finding the checkpointed file by inode. If you touch any of these, the
+   smoke suite must still pass — those tests are the specification — and
+   the demo's SIGKILL-across-rotations run should still show `NO GAPS`.
 5. **Don't auto-merge or force-push to `main`.** Open a PR, even for small
    changes, even when working solo on a branch.
 
@@ -64,12 +66,13 @@ Only four directories contain anything:
 
 - Commits follow Conventional Commits: `feat:`, `fix:`, `docs:`, `chore:`,
   `refactor:`, `test:`. See CONTRIBUTING.md for the full workflow.
-- Python: `ruff check` clean. Rule selection is pinned explicitly in
-  `forwarder/pyproject.toml` — ruff's defaults drift between releases and an
+- Python: `ruff check` clean. Rule selection is pinned explicitly in the
+  repo-root `ruff.toml` — ruff's defaults drift between releases and an
   unpinned config turns CI red on code that never changed.
 - Go (`go-agent-v0/`, archived): `gofmt` + `go vet` clean before committing.
-- Tests: `cd forwarder && python tests/smoke_test.py` — 44 assertions, needs
-  Linux for real inode semantics. CI runs it on every push.
+- Tests: `cd forwarder && python tests/smoke_test.py` — 59 checks, needs
+  Linux for real inode semantics. `cd demo && python tests/demo_test.py`
+  covers the demo pipeline without Docker. CI runs both on every push.
 - New architectural decisions get an entry in @docs/DECISIONS.md, and an ADR
   in `docs/adr/` if they're load-bearing.
 

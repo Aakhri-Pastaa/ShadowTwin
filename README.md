@@ -36,12 +36,13 @@ host.
 
 ## The problem
 
-Four things make a naive file-to-Kafka forwarder lose data:
+Five things make a naive file-to-Kafka forwarder lose data:
 
 - **Rename rotation** — the path gets a new inode while your handle holds the old one. You stop receiving data, silently and permanently.
 - **`copytruncate` rotation** — the inode is unchanged but the file is truncated under your byte offset. You stall, or re-read the file and duplicate everything.
 - **Non-atomic appends** — Wazuh writes with ordinary buffered I/O, so a poll can land mid-object: `{"timestamp":"2026-09-20T02:14:0`.
 - **The crash window** — die between producing a message and its acknowledgement, and the next start has to know. Checkpoint optimistically and you lose in-flight records; checkpoint per record and it is unusably slow.
+- **Rotation while you are stopped** — restart after the log rotated, and the checkpoint names a file that is no longer at the path. Read the new file from zero and everything written to the old one after the checkpoint is gone. v1.0.0 did exactly this; the [demo](demo/) caught it.
 
 Broker outages compound all four, and they correlate with incidents: the
 moment a host is under attack is a moment infrastructure is unstable.
@@ -79,11 +80,25 @@ New inode: drain the old handle to its end *first*, then open the new file at
 zero. Size below offset: seek to zero. Deleted: close, wait, re-attach.
 Trailing fragment without a newline: withhold until the newline arrives.
 
-**Guarantee: at-least-once.** In-flight messages are re-sent after a crash.
-Duplicates are possible, gaps are not — consumers must deduplicate, typically
-on the Wazuh alert ID. Exactly-once would need a transactional sink and
-two-phase commit across a file and a network boundary; a duplicate alert is
-an inconvenience, a missing one is missing evidence.
+If the file rotated while the forwarder was **stopped**, there is no open
+handle to drain. On startup the checkpointed inode is looked up among the
+rotated generations — `<path>.*`, plus an optional `rotated:` glob per file —
+opened at the saved offset, and drained; then every generation rotated after
+it is read, oldest first, and only then the live file. Generations are
+tracked by inode because names shift on each rotation, candidates must share
+the path's filesystem, compressed files are never read, and the saved offset
+must fall on a line boundary so a reused inode is not resumed mid-line.
+
+**Guarantee: at-least-once.** Messages delivered but not yet checkpointed
+when the process dies are re-sent. Duplicates are possible; gaps are not,
+across crashes, outages and rotation — provided a rotated-away file still
+exists, uncompressed, where the forwarder searches for it. If it has been
+deleted or compressed before restart, the forwarder cannot read it and says
+so: an `ERROR` naming the inode and the offset after which data was not
+forwarded, never a silent skip. Consumers must deduplicate, typically on the
+Wazuh alert ID. Exactly-once would need a transactional sink and two-phase
+commit across a file and a network boundary; a duplicate alert is an
+inconvenience, a missing one is missing evidence.
 
 ## Try it
 
@@ -102,9 +117,17 @@ the consumer can audit for loss rather than assert it:
 ```
 
 The generator rotates and truncates the log while it runs. Stop the broker
-mid-stream with `docker compose stop kafka`, start it again, and the audit
-still reports `NO GAPS` — a non-zero `duplicates` count is at-least-once
-working as specified. See [`demo/`](demo/).
+and the forwarder holds the backlog — 236 alerts in the verification run —
+and delivers it on reconnect. `SIGKILL` the forwarder and keep it down across
+three rotations, and on restart it drains the checkpointed file from
+`alerts.json.3` and walks forward through `.2` and `.1`:
+
+```
+[audit] received=806 unique=803 highest=803 duplicates=3 | NO GAPS
+```
+
+Three duplicates — lines delivered just before the kill but not yet
+checkpointed — and no gaps. See [`demo/`](demo/).
 
 ## Install
 
@@ -170,7 +193,7 @@ root.
 cd forwarder && python tests/smoke_test.py
 ```
 
-44 assertions in CI on every push, alongside `ruff`. Fault injection, not
+59 checks in CI on every push, alongside `ruff`. Fault injection, not
 happy path — each induces a failure and asserts the recovery:
 
 | Induced | Asserted |
@@ -185,12 +208,21 @@ happy path — each induces a failure and asserts the recovery:
 | All-brokers-down then delivery | Reconnect counter increments exactly once |
 | Shipped producer config | Accepted by the real librdkafka client |
 | Kill and restart mid-stream | Resumes at exactly the right byte — no gap, no repeat |
+| Rotation while stopped | Checkpointed file found by inode, drained from the saved offset, then the new file |
+| Two rotations while stopped | Checkpointed file's tail, then the generation after it, then the live file — in order |
+| Owed generation renamed again before opening | Still found, by inode |
+| Rotated file deleted before restart | `ERROR` naming the lost offset — not a silent skip |
+| Reused inode, offset mid-line | Not resumed mid-line; treated as a different file |
+| Rotated file in a dated directory | Found through the configured `rotated:` glob |
+| Newer compressed sibling | Ignored |
 
 Linux required: the rotation tests need real inode semantics.
 
 ## Limitations
 
 - **At-least-once, not exactly-once.** Consumers must deduplicate.
+- **Rotation recovery needs the rotated file to still exist, uncompressed.** Wazuh's own daily rotation moves logs into dated directories and compresses them; a forwarder that is down across it can only recover if the uncompressed file is still present. Otherwise the loss is logged, not recovered.
+- **Inode-reuse detection is a one-byte heuristic** — the saved offset must follow a newline. An unrelated file passes by chance about once per average line length. A content fingerprint in the checkpoint would close this.
 - **No TLS or SASL to the broker.** Plaintext and unauthenticated — trusted network segments only. Wazuh alerts carry hostnames, usernames and command lines; see [SECURITY.md](SECURITY.md).
 - **Single broker** in the default config, though `bootstrap_servers` takes a list.
 - **Linux only** — inode-based rotation detection, systemd, POSIX `os.replace`.

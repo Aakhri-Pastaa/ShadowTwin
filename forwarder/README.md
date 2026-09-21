@@ -53,6 +53,10 @@ kept for reinstalls; add `--purge` to delete those too).
   path's inode/size against the handle whenever it reaches end-of-file. That
   detects rotation (inode change), truncation (`copytruncate`), deletion and
   re-creation, all without a restart. Already-read data is never re-scanned.
+  If a file rotated while the forwarder was **stopped**, startup finds the
+  checkpointed file by inode among its rotated generations, drains it from
+  the saved offset, reads every later generation in order, then the live
+  file (see `rotated:` below).
 * **Producer** (`producer.py`) — confluent-kafka (librdkafka) with
   `acks=all`, idempotence, lz4 compression, `linger.ms`/`batch.size`
   batching, automatic reconnect and infinite retries. When the local queue
@@ -63,8 +67,9 @@ kept for reinstalls; add `--purge` to delete those too).
   temp file + fsync + rename; the previous checkpoint is kept as
   `state.json.bak`). An offset only advances after Kafka has acknowledged
   **every** message up to it, so a restart resumes exactly where it stopped
-  and re-sends at most the few messages that were still in flight —
-  at-least-once delivery, no gaps.
+  and re-sends at most the messages delivered since the last checkpoint —
+  at-least-once delivery, no gaps, including across rotations while stopped
+  as long as the rotated file still exists uncompressed.
 * **JSON** — each line is validated with `json.loads`. Malformed lines are
   logged and skipped; the process never crashes on bad input. Valid lines
   are forwarded byte-for-byte as they appear in the file.
@@ -131,6 +136,11 @@ topics:
 files:
   alerts: /var/ossec/logs/alerts/alerts.json
   archives: /var/ossec/logs/archives/archives.json
+
+# Optional, keyed like 'files': extra glob for each file's rotated-away
+# generations. "<path>.*" (alerts.json.1 ...) is always searched.
+# rotated:
+#   alerts: /var/ossec/logs/alerts/*/*/ossec-alerts-*.json
 
 watcher:
   poll_interval: 0.25      # seconds between checks when files are idle
@@ -231,7 +241,8 @@ your config against the shipped `config.yaml` for new options.
 |----------|--------------|
 | Kafka goes offline | Events buffer locally (`queue_max_messages`); when the buffer is full the watchers pause. Nothing is dropped, delivery resumes automatically, and the stats line counts the recovery in `reconnects`. |
 | Wazuh restarts / rotates logs | Rotation, truncation, deletion and re-creation are detected via inode/size checks; the watcher reopens and continues. No duplicates, no gaps. |
-| Forwarder crashes / host reboots | systemd restarts it (5 s backoff / at boot). Offsets are loaded from `state.json`; only messages that were in flight during the crash are re-sent (at-least-once). |
+| Forwarder crashes / host reboots | systemd restarts it (5 s backoff / at boot). Offsets are loaded from `state.json`; only messages delivered since the last checkpoint are re-sent (at-least-once). |
+| Logs rotate while the forwarder is stopped | On startup the checkpointed file is found by inode under `<path>.*` or the `rotated:` glob, drained from the saved offset, then every later generation, then the live file. No gap. If the rotated file was deleted or compressed, an `ERROR` records the inode and the offset after which data was not forwarded. |
 | `state.json` corrupt or lost | The previous checkpoint `state.json.bak` is loaded automatically; the bad file is kept as `state.json.corrupt` for inspection. If both are unusable, the forwarder starts fresh per `watcher.start_from`. |
 | Start over deliberately | `sudo systemctl stop shadowtwin-forwarder`, delete `/var/lib/shadowtwin-forwarder/state.json*`, start again. |
 
@@ -282,6 +293,16 @@ file appears; enabling that option is a Wazuh-side decision.
 `nc -vz localhost 9092` from the Wazuh host, and that Kafka's
 `advertised.listeners` announces `localhost:9092` (not `localhost`).
 The forwarder keeps buffering and reconnecting; nothing is lost.
+
+**`file was rotated while stopped; draining …`** (WARNING) — the log
+rotated while the forwarder was down and it is catching up from the rotated
+file. Expected after downtime that spans a rotation; nothing to do.
+
+**`… was NOT forwarded`** (ERROR) — the file rotated while the forwarder
+was down and the rotated copy could not be found: deleted, compressed, or
+somewhere the search does not cover. The message names the inode and the
+offset after which data was lost. If Wazuh moves rotated logs elsewhere, add
+that location under `rotated:`; compression cannot be recovered from.
 
 **`Topics FAIL - missing on the broker`** — create `wazuh-alerts` and
 `wazuh-logs` on the Kafka host, or enable topic auto-creation.
