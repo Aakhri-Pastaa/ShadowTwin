@@ -50,6 +50,17 @@ check("timestamp matches Wazuh format",
       len(a["timestamp"].split(".")[1]) == 8)
 check("sequences increment", gen.make_alert(7)["demo_seq"] == 7)
 
+# A restarted generator must continue numbering, not restart at 1.
+seqdir = tempfile.mkdtemp()
+seqfile = os.path.join(seqdir, ".demo_seq")
+check("no seq file starts at 0", gen.load_seq(seqfile) == 0)
+gen.save_seq(seqfile, 41)
+check("sequence survives a restart", gen.load_seq(seqfile) == 41)
+with open(seqfile, "w") as fh:
+    fh.write("not-a-number")
+check("corrupt seq file falls back to 0", gen.load_seq(seqfile) == 0)
+shutil.rmtree(seqdir, ignore_errors=True)
+
 # --- consumer's gap audit behaves ------------------------------------------
 from consumer import SeqAudit  # noqa: E402
 

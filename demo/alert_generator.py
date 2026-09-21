@@ -16,6 +16,11 @@ Environment:
     DEMO_TRUNCATE_EVERY truncate in place after this many alerts, 0 disables (default 300)
     DEMO_ALERTS_PATH   default /var/ossec/logs/alerts/alerts.json
     DEMO_ARCHIVES_PATH default /var/ossec/logs/archives/archives.json
+    DEMO_SEQ_FILE      default /var/ossec/logs/.demo_seq
+
+The sequence counter is persisted in the shared volume, so a restarted
+generator continues numbering instead of starting again at 1 — which the
+consumer's audit would otherwise read as thousands of duplicates.
 """
 
 from __future__ import annotations
@@ -33,6 +38,7 @@ ROTATE_EVERY = int(os.environ.get("DEMO_ROTATE_EVERY", "120"))
 TRUNCATE_EVERY = int(os.environ.get("DEMO_TRUNCATE_EVERY", "300"))
 ALERTS = os.environ.get("DEMO_ALERTS_PATH", "/var/ossec/logs/alerts/alerts.json")
 ARCHIVES = os.environ.get("DEMO_ARCHIVES_PATH", "/var/ossec/logs/archives/archives.json")
+SEQ_FILE = os.environ.get("DEMO_SEQ_FILE", "/var/ossec/logs/.demo_seq")
 
 AGENTS = [
     ("001", "web-01", "10.20.0.11"),
@@ -119,6 +125,23 @@ def write_line(path: str, payload: dict) -> None:
         fh.write(json.dumps(payload, separators=(",", ":")) + "\n")
 
 
+def load_seq(path: str) -> int:
+    """Last sequence number written by a previous run, or 0."""
+    try:
+        with open(path, encoding="utf-8") as fh:
+            return int(fh.read().strip() or 0)
+    except (FileNotFoundError, ValueError):
+        return 0
+
+
+def save_seq(path: str, seq: int) -> None:
+    """Persist the counter atomically (temp file + os.replace)."""
+    tmp = path + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as fh:
+        fh.write(str(seq))
+    os.replace(tmp, path)
+
+
 def rotate(path: str) -> None:
     """Rename-rotate: the path gets a new inode, the old handle goes stale.
 
@@ -164,11 +187,17 @@ def main() -> int:
     print(f"[generator] rotate every {ROTATE_EVERY or 'never'}, "
           f"truncate every {TRUNCATE_EVERY or 'never'}", flush=True)
 
-    seq = 0
+    seq = load_seq(SEQ_FILE)
+    if seq:
+        print(f"[generator] resuming after sequence {seq}", flush=True)
     while running:
         seq += 1
         alert = make_alert(seq)
         write_line(ALERTS, alert)
+        # Saved after the write: a crash between the two re-uses one number,
+        # which the audit counts as a duplicate. Saving first would instead
+        # skip a number on crash, which the audit would report as a false gap.
+        save_seq(SEQ_FILE, seq)
         # archives.json carries the unfiltered stream; one line in three here.
         if seq % 3 == 0:
             write_line(ARCHIVES, alert)

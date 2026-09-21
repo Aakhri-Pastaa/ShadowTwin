@@ -12,10 +12,19 @@ becomes something you watch rather than something you take on trust:
 Kill the broker mid-run (``docker compose stop kafka``), wait, start it again,
 and the audit line should still report zero gaps.
 
+The audit is a property of the *topic*, not of this process. Every start
+assigns the partitions directly from offset 0 and commits nothing, so a
+restarted consumer re-audits everything rather than resuming mid-stream with an
+empty ledger, which would report every earlier sequence as a gap.
+
+It deliberately does not join a consumer group. Group membership depends on
+the group coordinator answering heartbeats; during a broker outage the session
+times out, and on a single-node cluster the consumer can fail to rejoin. The
+audit needs none of what a group provides, so it avoids the failure mode.
+
 Environment:
     DEMO_BOOTSTRAP  Kafka bootstrap servers (default kafka:9092)
     DEMO_TOPICS     comma-separated topics (default wazuh-alerts)
-    DEMO_GROUP      consumer group id (default shadowtwin-demo)
     DEMO_QUIET      1 to print only the periodic audit line
 """
 
@@ -27,11 +36,12 @@ import signal
 import sys
 import time
 
-from confluent_kafka import Consumer, KafkaError
+from confluent_kafka import OFFSET_BEGINNING, Consumer, KafkaError, TopicPartition
 
 BOOTSTRAP = os.environ.get("DEMO_BOOTSTRAP", "kafka:9092")
 TOPICS = [t.strip() for t in os.environ.get("DEMO_TOPICS", "wazuh-alerts").split(",") if t.strip()]
-GROUP = os.environ.get("DEMO_GROUP", "shadowtwin-demo")
+# Required by librdkafka's config, but unused: we assign(), never subscribe().
+GROUP = "shadowtwin-demo-audit"
 QUIET = os.environ.get("DEMO_QUIET", "0") == "1"
 
 AUDIT_INTERVAL = 10.0  # seconds between audit lines
@@ -89,12 +99,19 @@ def main() -> int:
         "bootstrap.servers": BOOTSTRAP,
         "group.id": GROUP,
         "auto.offset.reset": "earliest",
-        # Commit only what we have actually processed, mirroring the
-        # forwarder's discipline on the producing side.
         "enable.auto.commit": False,
     })
-    consumer.subscribe(TOPICS)
-    print(f"[consumer] {BOOTSTRAP} topics={','.join(TOPICS)} group={GROUP}", flush=True)
+    metadata = consumer.list_topics(timeout=30)
+    partitions = []
+    for topic in TOPICS:
+        if topic not in metadata.topics or metadata.topics[topic].error:
+            print(f"[consumer] topic {topic} does not exist", flush=True)
+            return 2
+        partitions += [TopicPartition(topic, p, OFFSET_BEGINNING)
+                       for p in metadata.topics[topic].partitions]
+    consumer.assign(partitions)
+    print(f"[consumer] {BOOTSTRAP} reading {len(partitions)} partition(s) of "
+          f"{','.join(TOPICS)} from offset 0", flush=True)
 
     audit = SeqAudit()
     running = True
@@ -127,7 +144,6 @@ def main() -> int:
                 alert = json.loads(msg.value())
             except (ValueError, UnicodeDecodeError):
                 print("[consumer] skipping unparseable message", flush=True)
-                consumer.commit(msg, asynchronous=False)
                 continue
 
             seq = alert.get("demo_seq")
@@ -144,9 +160,6 @@ def main() -> int:
                     f"{rule.get('description', '?')[:52]:<52} {mitre}{marker}",
                     flush=True,
                 )
-
-            # Offset committed only after the record is processed.
-            consumer.commit(msg, asynchronous=False)
     finally:
         print(audit.line(), flush=True)
         consumer.close()

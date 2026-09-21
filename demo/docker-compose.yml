@@ -37,6 +37,10 @@ services:
       timeout: 10s
       retries: 20
       start_period: 15s
+    # Without this, a Docker daemon restart brings every other service back
+    # while the broker stays down. unless-stopped still honours an explicit
+    # `docker compose stop kafka`, which the outage demo relies on.
+    restart: unless-stopped
 
   kafka-init:
     image: apache/kafka:4.0.0
