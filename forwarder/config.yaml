@@ -22,6 +22,19 @@ files:
   alerts: /var/ossec/logs/alerts/alerts.json
   archives: /var/ossec/logs/archives/archives.json
 
+# Where a file's rotated-away generations live, keyed like 'files'. Optional.
+# If the forwarder is down while a file rotates, on restart it finds the old
+# file by inode and drains it from the checkpoint before reading the new one.
+# "<path>.*" (logrotate-style alerts.json.1) is always searched; add a glob
+# here for other layouts. A file that has been deleted or compressed cannot
+# be recovered — the forwarder then logs exactly what was lost.
+#
+# Wazuh's own daily rotation moves logs into dated directories. Verify the
+# layout and compression timing on your manager before relying on this:
+# rotated:
+#   alerts: /var/ossec/logs/alerts/*/*/ossec-alerts-*.json
+#   archives: /var/ossec/logs/archives/*/*/ossec-archive-*.json
+
 watcher:
   poll_interval: 0.25      # seconds between checks when a file is idle
   batch_lines: 500         # max lines read per file per iteration

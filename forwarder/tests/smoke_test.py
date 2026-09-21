@@ -132,6 +132,111 @@ lines = ft3.poll(100)
 check("start_from end sees new lines", [ln[0] for ln in lines] == [b'{"new":1}'])
 ft3.close()
 
+# --- rotation while stopped (v1.1.0) ------------------------------------------
+# Found by the demo: SIGKILL the forwarder, let the log rotate before it comes
+# back, and v1.0.0 read only the new file, losing everything written to the old
+# one after the last checkpoint.
+import logging  # noqa: E402
+
+from watcher import _at_line_boundary  # noqa: E402
+
+
+class _Capture(logging.Handler):
+    def __init__(self):
+        super().__init__()
+        self.records = []
+
+    def emit(self, record):
+        self.records.append(record)
+
+
+_cap = _Capture()
+logging.getLogger("watcher").addHandler(_cap)
+
+
+def _write(path, first, last):
+    with open(path, "a") as fh:
+        fh.write("".join(f'{{"n":{i}}}\n' for i in range(first, last + 1)))
+
+
+def _nums(lines):
+    return [json.loads(ln[0])["n"] for ln in lines]
+
+
+rd = tempfile.mkdtemp()
+rp = os.path.join(rd, "alerts.json")
+_write(rp, 1, 5)
+ta = FileTail("alerts", rp, "beginning", None)
+got = ta.poll(100)
+saved_ck = (got[2][1], got[2][2])   # broker acked 1-3; 4-5 still in flight
+ta.close()                          # process killed
+_write(rp, 6, 8)                    # Wazuh keeps writing while we are down
+os.rename(rp, rp + ".1")            # ...then rotates
+_write(rp, 9, 10)
+tb = FileTail("alerts", rp, "beginning", saved_ck)
+check("rotated while stopped: resumes inside the rotated file", tb.position == saved_ck)
+recovered = []
+for _ in range(3):
+    recovered += _nums(tb.poll(100))
+check("rotated while stopped: drains old file, then new, nothing lost",
+      recovered == [4, 5, 6, 7, 8, 9, 10], str(recovered))
+tb.close()
+
+# Old file gone for good: the loss must be reported, not skipped silently.
+rd2 = tempfile.mkdtemp()
+rp2 = os.path.join(rd2, "alerts.json")
+_write(rp2, 1, 3)
+ta = FileTail("alerts", rp2, "beginning", None)
+got = ta.poll(100)
+saved_gone = (got[0][1], got[0][2])
+ta.close()
+_write(rp2 + ".new", 7, 8)
+os.replace(rp2 + ".new", rp2)       # old inode released, path gets a new one
+_cap.records.clear()
+tc = FileTail("alerts", rp2, "beginning", saved_gone)
+check("rotated file gone: reads the new file from the start", _nums(tc.poll(100)) == [7, 8])
+check("rotated file gone: logged as an ERROR naming the lost offset",
+      any(r.levelno == logging.ERROR and "NOT forwarded" in r.getMessage()
+          for r in _cap.records))
+tc.close()
+
+# Same inode but the offset is not one we could have checkpointed: the inode
+# was reused by a different file. Must not resume mid-line.
+rd3 = tempfile.mkdtemp()
+rp3 = os.path.join(rd3, "alerts.json")
+_write(rp3, 1, 3)
+td = FileTail("alerts", rp3, "beginning", (os.stat(rp3).st_ino, 5))
+check("offset off a line boundary: treated as another file, read from start",
+      _nums(td.poll(100)) == [1, 2, 3])
+td.close()
+
+# Wazuh-style layout: rotated file moved into a dated directory.
+rd4 = tempfile.mkdtemp()
+rp4 = os.path.join(rd4, "alerts.json")
+_write(rp4, 1, 4)
+ta = FileTail("alerts", rp4, "beginning", None)
+got = ta.poll(100)
+saved_dated = (got[1][1], got[1][2])
+ta.close()
+os.makedirs(os.path.join(rd4, "2026", "Sep"))
+os.rename(rp4, os.path.join(rd4, "2026", "Sep", "ossec-alerts-21.json"))
+_write(rp4, 5, 5)
+te = FileTail("alerts", rp4, "beginning", saved_dated,
+              rotated_glob=os.path.join(rd4, "*", "*", "ossec-alerts-*.json"))
+check("configured glob finds a rotated file in another directory",
+      _nums(te.poll(100)) == [3, 4, 5])
+te.close()
+
+bp = os.path.join(rd3, "boundary.json")
+with open(bp, "wb") as fh:
+    fh.write(b'{"n":1}\n{"n":2}')    # 15 bytes, final line has no newline
+with open(bp, "rb") as fh:
+    check("boundary: offset 0 and just after a newline are valid",
+          _at_line_boundary(fh, 0) and _at_line_boundary(fh, 8))
+    check("boundary: end of a newline-less final line is valid", _at_line_boundary(fh, 15))
+    check("boundary: mid-line and past EOF are not",
+          not _at_line_boundary(fh, 4) and not _at_line_boundary(fh, 99))
+
 # --- config ------------------------------------------------------------------
 from config import ConfigError, KafkaConfig, load_config  # noqa: E402
 
@@ -156,6 +261,23 @@ try:
     check("missing topic rejected", False)
 except ConfigError:
     check("missing topic rejected", True)
+
+rot_yaml = os.path.join(wd, "rot.yaml")
+with open(rot_yaml, "w") as fh:
+    fh.write("kafka:\n  bootstrap_servers: [x:9092]\ntopics:\n  alerts: t\n"
+             "files:\n  alerts: /tmp/a\nrotated:\n  alerts: /tmp/*/a-*.json\n")
+check("config: rotated glob attached to its file",
+      load_config(rot_yaml).files[0].rotated_glob == "/tmp/*/a-*.json")
+check("config: rotated is optional",
+      load_config(os.path.join(PROJECT, "config.yaml")).files[0].rotated_glob is None)
+with open(rot_yaml, "w") as fh:
+    fh.write("kafka:\n  bootstrap_servers: [x:9092]\ntopics:\n  alerts: t\n"
+             "files:\n  alerts: /tmp/a\nrotated:\n  nope: /tmp/*\n")
+try:
+    load_config(rot_yaml)
+    check("config: rotated entry for an unknown file rejected", False)
+except ConfigError:
+    check("config: rotated entry for an unknown file rejected", True)
 
 # --- real librdkafka accepts our producer settings ----------------------------
 import producer as producer_mod  # noqa: E402
@@ -313,6 +435,26 @@ fp2 = FakeProducer.instances[-1]
 check("restart resumes exactly where it stopped",
       [v for t2, v in fp2.sent if t2 == "wazuh-alerts"] == [b'{"n":4}'])
 check("second run exited cleanly", rc2.get("code") == 0)
+
+# restart after the file rotated while the forwarder was down (v1.1.0)
+with open(alerts, "a") as fh:
+    fh.write('{"n":5}\n{"n":6}\n')     # written while stopped
+os.rename(alerts, alerts + ".1")        # ...then rotated
+with open(alerts, "w") as fh:
+    fh.write('{"n":7}\n')
+stop3 = threading.Event()
+rc3 = {}
+cfg4 = load_config(cfg_path)
+thread3 = threading.Thread(target=lambda: rc3.update(code=app.run(cfg4, stop3)))
+thread3.start()
+time.sleep(0.6)
+stop3.set()
+thread3.join(timeout=10)
+fp3 = FakeProducer.instances[-1]
+check("restart after rotation while stopped: drains the rotated file, nothing lost",
+      [v for t3, v in fp3.sent if t3 == "wazuh-alerts"]
+      == [b'{"n":5}', b'{"n":6}', b'{"n":7}'])
+check("third run exited cleanly", rc3.get("code") == 0)
 
 checks.run_checks = real_run_checks
 

@@ -153,7 +153,8 @@ def run(cfg: AppConfig, stop: threading.Event) -> int:
     tails: list[tuple[FileTail, str]] = []
 
     for wf in cfg.files:
-        tail = FileTail(wf.name, wf.path, cfg.watcher.start_from, store.get(wf.name))
+        tail = FileTail(wf.name, wf.path, cfg.watcher.start_from, store.get(wf.name),
+                        rotated_glob=wf.rotated_glob)
         trackers[wf.name] = AckTracker(tail.position)
         tails.append((tail, wf.topic))
         logger.info("forwarding %s (%s) -> topic %s", wf.name, wf.path, wf.topic)
