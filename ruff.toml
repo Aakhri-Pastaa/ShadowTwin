@@ -11,7 +11,7 @@ target-version = "py312"
 # Both are flat module directories rather than installed packages, so isort
 # needs telling where first-party imports live. Without this, `import config`
 # inside forwarder/ is classed as third-party and the ordering flips.
-src = ["forwarder", "demo"]
+src = ["forwarder", "demo", "ingestor"]
 
 [lint]
 select = ["E", "F", "W", "I", "UP", "B"]

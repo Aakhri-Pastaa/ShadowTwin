@@ -1,4 +1,5 @@
-# ShadowTwin demo environment — the whole pipeline on one machine.
+# ShadowTwin demo environment — the whole pipeline on one machine:
+# generator -> forwarder -> Kafka -> ingestor -> PostgreSQL, plus an auditor.
 #
 #   docker compose up --build
 #
@@ -97,6 +98,42 @@ services:
     stop_grace_period: 45s
     restart: unless-stopped
 
+  postgres:
+    image: postgres:17-alpine
+    container_name: shadowtwin-demo-postgres
+    environment:
+      POSTGRES_USER: shadowtwin
+      # Demo-only credential. The port is not published: the database is
+      # reachable only from inside this compose network.
+      POSTGRES_PASSWORD: shadowtwin-demo
+      POSTGRES_DB: shadowtwin
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shadowtwin -d shadowtwin"]
+      interval: 3s
+      timeout: 5s
+      retries: 20
+    volumes:
+      - findings-db:/var/lib/postgresql/data
+    restart: unless-stopped
+
+  ingestor:
+    build:
+      context: ../ingestor
+      dockerfile: Dockerfile
+    container_name: shadowtwin-demo-ingestor
+    depends_on:
+      kafka-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+    environment:
+      INGESTOR_BOOTSTRAP: kafka:9092
+      INGESTOR_TOPICS: wazuh-alerts
+      INGESTOR_DSN: postgresql://shadowtwin@postgres:5432/shadowtwin
+      PGPASSWORD: shadowtwin-demo
+      INGESTOR_LOG_LEVEL: "${INGESTOR_LOG_LEVEL:-INFO}"
+    restart: unless-stopped
+
   consumer:
     build:
       context: .
@@ -116,3 +153,4 @@ volumes:
   wazuh-logs:
   forwarder-state:
   forwarder-logs:
+  findings-db:

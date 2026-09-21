@@ -4,6 +4,39 @@ All notable changes to this project are documented here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 versioning follows [Semantic Versioning](https://semver.org/).
 
+## [1.2.0] - 2026-09-21
+
+### Added
+- **`ingestor/`** — reads `wazuh-alerts` from Kafka into a PostgreSQL
+  `findings` table: typed columns for time, rule, level, ATT&CK technique ids
+  and tactics, agent, decoder, source IP and user, plus the whole alert as
+  `jsonb`, and the exact Kafka topic/partition/offset each row came from.
+  - Kafka offsets are stored in PostgreSQL and committed in the same
+    transaction as the rows they cover, so a crash re-reads exactly the
+    uncommitted batch.
+  - Partitions are assigned directly — no consumer group, nothing committed
+    to Kafka — so a broker outage cannot expire a group session.
+  - `PRIMARY KEY (manager, alert_id)` turns the forwarder's at-least-once
+    re-deliveries into no-ops.
+  - On database loss the in-flight batch rolls back and every partition is
+    re-assigned at the offset PostgreSQL holds, with exponential backoff.
+  - A batch PostgreSQL rejects is retried row by row in savepoints; the bad
+    row is logged with its Kafka position and the rest land.
+  - 30 checks against a real PostgreSQL, with Kafka replaced by an in-memory
+    consumer that honours `assign()` and offsets. CI runs them against a
+    PostgreSQL service container and fails if they are skipped.
+- `demo/` gains PostgreSQL and the ingestor. Verified: ingestor `SIGKILL`ed,
+  database stopped for 25 s, forwarder `SIGKILL`ed across three rotations —
+  6 duplicates in the topic, 0 duplicates and 0 gaps in the table.
+- `docs/archive/` gains four design documents from June 2026 that had never
+  been committed, recovered and published with homelab identifiers removed.
+  The ingestor's schema is the ingestion slice of their Finding object.
+
+### Changed
+- `docs/PROJECT_STATUS.md` and `docs/TOPOLOGY.md` no longer show a future
+  "AI consumer" and Streamlit dashboard; neither is planned. The ingestor is
+  shown as built and demo-verified but not yet deployed on the homelab.
+
 ## [1.1.0] - 2026-09-21
 
 ### Fixed
