@@ -16,24 +16,28 @@ A **security telemetry ingestion pipeline**. Wazuh writes NDJSON alert and
 archive logs; the ShadowTwin Forwarder tails them and ships every line to
 Apache Kafka with at-least-once delivery, surviving log rotation,
 truncation, deletion, broker outages and process crashes. It runs as a
-systemd service on the Wazuh manager host.
+systemd service on the Wazuh manager host. The ShadowTwin Ingestor reads the
+alert topic into a PostgreSQL `findings` table, exactly once per alert.
 
-That is the whole of the running system. **Scope is frozen** at this layer
-as of 2026-09-20 — see @docs/DECISIONS.md.
+That is the whole system. **Scope is frozen** at this layer as of
+2026-09-20 — see @docs/DECISIONS.md.
 
 ## Repo layout
 
-Only four directories contain anything:
-
-- `forwarder/` — Python. **The project.** Tails Wazuh's NDJSON logs and
-  ships them to Kafka; runs as the `shadowtwin-forwarder` systemd service.
-  See forwarder/README.md.
+- `forwarder/` — Python. Tails Wazuh's NDJSON logs and ships them to Kafka;
+  runs as the `shadowtwin-forwarder` systemd service. See forwarder/README.md.
+- `ingestor/` — Python. Kafka → PostgreSQL `findings` table. Offsets live in
+  PostgreSQL, committed with the rows; no consumer group. See
+  ingestor/README.md.
+- `demo/` — one-command Docker environment for the whole pipeline, with a
+  consumer that audits the topic for gaps.
 - `go-agent-v0/` — Go. **Archived**, superseded by Wazuh. The original
   custom telemetry collector + mTLS shipper. Complete and tested; CI is kept
   green. Don't extend it. See go-agent-v0/README.md.
 - `docs/` — status, decisions, ADRs, topology, deployment, troubleshooting.
-- `docs/archive/` — the original closed-loop purple-team platform design and
-  its roadmap. **Never implemented.** Historical record only.
+- `docs/archive/` — the original closed-loop purple-team platform design,
+  its roadmap and the June design docs. **Never implemented.** Historical
+  record only.
 
 ## Hard rules — do not bypass these, in code or in a session
 
@@ -72,7 +76,9 @@ Only four directories contain anything:
 - Go (`go-agent-v0/`, archived): `gofmt` + `go vet` clean before committing.
 - Tests: `cd forwarder && python tests/smoke_test.py` — 59 checks, needs
   Linux for real inode semantics. `cd demo && python tests/demo_test.py`
-  covers the demo pipeline without Docker. CI runs both on every push.
+  covers the demo pipeline without Docker. The ingestor's 30 checks need
+  `INGESTOR_TEST_DSN` pointing at a THROWAWAY database (they drop tables).
+  CI runs all three on every push.
 - New architectural decisions get an entry in @docs/DECISIONS.md, and an ADR
   in `docs/adr/` if they're load-bearing.
 

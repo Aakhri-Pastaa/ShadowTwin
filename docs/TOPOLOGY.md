@@ -17,9 +17,8 @@ flowchart TD
     MGR -->|"alerts.json / archives.json"| FWD["ShadowTwin Forwarder"]
     FWD --> BRK[("Kafka (KRaft mode)")]
     BRK --> TOP[["Topics: wazuh-alerts, wazuh-logs"]]
-    TOP -.future.-> AI["AI Consumer"]
-    AI --> DB[("PostgreSQL")]
-    DB --> UI["Streamlit Dashboard"]
+    TOP -.-> ING["ShadowTwin Ingestor (not deployed here yet)"]
+    ING -.-> DB[("PostgreSQL findings")]
     BRK -.ops only, not user-facing.-> KUI["Kafka UI"]
 
     classDef detect fill:#0f1a33,stroke:#38bdf8,color:#e6edf7;
@@ -28,7 +27,7 @@ flowchart TD
     classDef ops fill:#14192b,stroke:#4a5570,color:#9aa4c4;
     class EP,AG,MGR,OS,WD detect;
     class FWD,BRK,TOP transport;
-    class AI,DB,UI future;
+    class ING,DB future;
     class KUI ops;
 ```
 
@@ -49,6 +48,8 @@ provider, or network layout — see the private `INFRASTRUCTURE.md` for that.
 - Kafka UI is operations-only tooling (broker/topic inspection). It is
   never a dependency of any user-facing feature — see the note in
   `PROJECT_STATUS.md`.
-- This diagram covers only what's actually deployed or actively being
-  built (`PROJECT_STATUS.md`'s "Completed"/"Current work"), not the full
-  target design in [`archive/original-architecture.md`](archive/original-architecture.md).
+- This diagram covers only what's actually deployed, not the full target
+  design in [`archive/`](archive/). Dashed nodes are built and verified but
+  not deployed on this infrastructure: the ingestor and its PostgreSQL run in
+  the one-command [`demo/`](../demo/) environment, where they were tested
+  end to end.

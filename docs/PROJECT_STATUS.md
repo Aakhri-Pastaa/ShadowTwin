@@ -12,9 +12,9 @@
 > those.
 
 **Last updated:** 2026-09-21
-**Version:** v1.1.0
-**Project stage:** Scope frozen at the ingestion layer — shipped, with a
-one-command demo environment
+**Version:** v1.2.0
+**Project stage:** Scope frozen at the ingestion layer — Wazuh → Kafka →
+PostgreSQL pipeline built, with a one-command demo environment
 
 ---
 
@@ -23,10 +23,11 @@ one-command demo environment
 | Area | Progress |
 |---|---|
 | Infrastructure | `██████████` 100% |
-| Data pipeline | `██████████` 100% |
+| Data pipeline (forwarder) | `██████████` 100% |
+| Findings store (ingestor) | `██████████` 100% — built and demo-verified; not yet deployed on the homelab |
 | CI / tests | `██████████` 100% |
 
-The AI, database, dashboard and agent rows were removed: those components
+The AI, dashboard and agent rows were removed: those components
 were never started and are no longer planned. See
 [`DECISIONS.md`](DECISIONS.md) and [`archive/`](archive/).
 
@@ -47,29 +48,23 @@ Wazuh agent
 Wazuh manager
       │  alerts.json / archives.json
       ▼
-ShadowTwin Forwarder
+ShadowTwin Forwarder          at-least-once
       │
       ▼
 Kafka
       │  topics: wazuh-alerts, wazuh-logs
       ▼
-[future] AI consumer
+ShadowTwin Ingestor *         offsets committed with the rows
       │
       ▼
-PostgreSQL
-      │
-      ▼
-Streamlit
+PostgreSQL findings *         one row per alert, deduplicated
 ```
 
-Note: this concrete pipeline is the near-term build path toward the
-Wazuh → ingestor → PostgreSQL findings store → Evaluator → Attacker →
-Defender design in `archive/original-architecture.md`. Kafka + the Forwarder sit in front of
-what that doc calls the "ingestor"; the "AI consumer" is where
-Evaluator-style triage will eventually plug in. **Open discrepancy:**
-`archive/original-architecture.md` and `CLAUDE.md` say the frontend is Next.js;
-this pipeline uses Streamlit. Not yet reconciled — flag before either doc
-is treated as final.
+`*` Built and verified end to end in the [`demo/`](../demo/) environment;
+not yet deployed on the homelab, where the pipeline currently ends at Kafka.
+
+There is no dashboard, triage or attack stage, and none is planned: the
+platform those would have belonged to was archived on 2026-09-20.
 
 ---
 
@@ -91,23 +86,35 @@ is treated as final.
   restart, reboot, and crash-recovery all bring it back automatically.
 - ✅ Pivoted repo docs/architecture from custom Go agent to Wazuh-based
   design; archived the Go agent as `go-agent-v0/` (PR #7)
+- ✅ Scope frozen at the ingestion layer; every document aligned with what
+  exists; forwarder CI; v1.0.0 (PR #9)
+- ✅ One-command demo environment with a gap-auditing consumer; it found a
+  data-loss bug in v1.0.0 (rotation while stopped), fixed in v1.1.0 (PR #11)
+- ✅ **Ingestor → PostgreSQL findings store** — offsets committed in the same
+  transaction as the rows, direct partition assignment, alert-id primary
+  key, rewind on database loss, poison-value isolation. Verified in the demo:
+  ingestor killed, database stopped, forwarder killed across rotations —
+  6 duplicates in the topic, 0 duplicates and 0 gaps in the table (v1.2.0)
 
 ## Current work
 
-**None — the project is scope-frozen and released at v1.0.0.**
+**None — the project is scope-frozen; v1.2.0 adds the findings store.**
 
 The ingestion edge (Wazuh → Forwarder → Kafka) is complete, tested in CI,
-and running hands-off as a systemd service. On 2026-09-20 the remaining
+and running hands-off as a systemd service. The ingestor and findings store
+are complete and tested in CI and in the demo. On 2026-09-20 the remaining
 platform components (Evaluator, Attacker, Defender, environment graph,
 threat intel, lab, benchmark, frontend) were formally dropped rather than
 carried as indefinite aspiration — see [`DECISIONS.md`](DECISIONS.md).
 
 ## Possible extensions
 
-Not planned, but consistent with the frozen scope if ever picked up — a
-**Kafka consumer** reading `wazuh-alerts` / `wazuh-logs`, normalizing
-events and landing them in a findings store. That extends the existing
-pipeline rather than reviving the archived platform.
+Not planned, but consistent with the frozen scope:
+
+- **Deploy the ingestor on the homelab** next to the existing Kafka, so the
+  as-built pipeline matches the demo. Operational work, no new code.
+- A read-only view over `findings`. It would present the store, not revive
+  the archived platform.
 
 ## Blockers
 
@@ -124,7 +131,10 @@ systemd service now.)
 - Survives rotation, truncation, deletion, broker outage, crash, reboot ✅
 - Survives rotation *while stopped*, including several rotations ✅ (v1.1.0)
 - Runs unattended as a systemd service with health checks ✅
-- 59-check fault-injection suite passing in CI on every push ✅
+- 59-check forwarder suite and 30-check ingestor suite (against real
+  PostgreSQL) passing in CI on every push ✅
+- Findings store: exactly one row per alert across ingestor crash, database
+  outage and forwarder re-delivery ✅ (v1.2.0)
 - Reproducible without Wazuh: `cd demo && docker compose up --build` ✅
 - Every document describes only what exists ✅
 

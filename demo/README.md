@@ -6,10 +6,11 @@ The full pipeline on one machine — no Wazuh installation, no configuration.
 cd demo && docker compose up --build
 ```
 
-Five containers: a single-node Kafka broker in KRaft mode, a one-shot job
+Seven containers: a single-node Kafka broker in KRaft mode, a one-shot job
 that creates the two topics, a generator writing Wazuh-shaped NDJSON, the
-forwarder built from [`../forwarder`](../forwarder), and a consumer that
-audits what arrives.
+forwarder built from [`../forwarder`](../forwarder), the
+[ingestor](../ingestor) and the PostgreSQL findings store it writes to, and a
+consumer that audits the topic.
 
 The point is not that alerts flow. Every generated alert carries a monotonic
 `demo_seq`, and the consumer reads the whole topic from offset 0 and checks
@@ -163,6 +164,93 @@ can be down for about two minutes and still find everything. Longer, and the
 oldest generation is overwritten: the forwarder then logs an `ERROR` naming
 the inode and offset that were lost, and the audit shows the gap.
 
+## The findings store
+
+The ingestor reads the same topic into PostgreSQL. Its first minute:
+
+```
+INFO     ingestor   ShadowTwin Ingestor: topics=wazuh-alerts batch=500 start_from=beginning
+INFO     store      connected to PostgreSQL; schema ready
+INFO     ingestor   reading wazuh-alerts[0] from the beginning
+INFO     ingestor   stats: consumed=389 inserted=389 duplicates=0 rejected=0 db_retries=0
+```
+
+The table can be audited the same way as the topic. With sequences starting at
+1, `highest - unique` is the number of gaps:
+
+```bash
+docker compose exec postgres psql -U shadowtwin -d shadowtwin -c "
+  SELECT count(*) AS rows,
+         count(DISTINCT (raw->>'demo_seq')::int) AS unique_seqs,
+         max((raw->>'demo_seq')::int) - count(DISTINCT (raw->>'demo_seq')::int) AS gaps
+  FROM findings"
+```
+
+The database is not published on a host port; `docker compose exec` is the
+way in.
+
+### Kill the ingestor
+
+```bash
+docker compose kill -s SIGKILL ingestor
+docker compose start ingestor
+```
+
+It resumes from the offset stored in PostgreSQL — committed in the same
+transaction as the rows, so it names exactly the first unwritten message:
+
+```
+INFO     ingestor   reading wazuh-alerts[0] from offset 474
+```
+
+```
+rows=708 unique=708 gaps=0
+```
+
+### Take the database away
+
+```bash
+docker compose stop postgres
+```
+
+Wait 25 seconds, then `docker compose start postgres`. The batch in hand is
+rolled back, so the ingestor rewinds to the stored offsets rather than trusting
+its own position, and backs off until the database returns:
+
+```
+ERROR    ingestor   PostgreSQL unavailable (terminating connection due to administrator command); rewinding to the stored offsets
+WARNING  ingestor   not ready (failed to resolve host 'postgres': ...); retrying in 1 s
+WARNING  ingestor   not ready (...); retrying in 2 s
+...
+WARNING  ingestor   not ready (...); retrying in 16 s
+INFO     store      connected to PostgreSQL; schema ready
+INFO     ingestor   reading wazuh-alerts[0] from offset 718
+```
+
+```
+rows=1068 unique=1068 gaps=0
+```
+
+### At-least-once in, exactly-once out
+
+Kill the **forwarder** across a few rotations, as above, and it re-sends the
+lines it had delivered but not yet checkpointed. The topic now holds
+duplicates; the table does not, because each alert's id is the primary key:
+
+| | Messages | Duplicates | Gaps |
+|---|---|---|---|
+| `wazuh-alerts` topic | 1,676 | 6 | 0 |
+| `findings` table | 1,725 rows | 0 | 0 |
+
+The ingestor's stats line records the six it absorbed:
+
+```
+stats: consumed=1035 inserted=1029 duplicates=6 rejected=0 db_retries=1
+```
+
+(The table has more rows than the topic snapshot because it was read a few
+seconds later.)
+
 ## Configuration
 
 Defaults are in the compose file and can be overridden per run:
@@ -175,6 +263,7 @@ Defaults are in the compose file and can be overridden per run:
 | `DEMO_TRUNCATE_EVERY` | `300` | Truncate `archives.json` after N alerts; `0` disables |
 | `DEMO_QUIET` | `0` | `1` prints only the audit line, not every alert |
 | `SHADOWTWIN_LOG_LEVEL` | `INFO` | Forwarder log verbosity |
+| `INGESTOR_LOG_LEVEL` | `INFO` | Ingestor log verbosity |
 
 ```bash
 DEMO_RATE=50 DEMO_ROTATE_EVERY=500 docker compose up --build

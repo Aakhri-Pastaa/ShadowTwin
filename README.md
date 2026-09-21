@@ -4,9 +4,10 @@
 
 <br/><br/>
 
-**A Python service that streams Wazuh's security alerts into Apache Kafka with at-least-once delivery, surviving log rotation, truncation, broker outages and process crashes.**
+**A pipeline that streams Wazuh's security alerts into Apache Kafka with at-least-once delivery and stores them in PostgreSQL exactly once — surviving log rotation, truncation, broker and database outages, and process crashes.**
 
 [![Forwarder CI](https://github.com/Aakhri-Pastaa/ShadowTwin/actions/workflows/forwarder.yml/badge.svg)](https://github.com/Aakhri-Pastaa/ShadowTwin/actions/workflows/forwarder.yml)
+[![Ingestor CI](https://github.com/Aakhri-Pastaa/ShadowTwin/actions/workflows/ingestor.yml/badge.svg)](https://github.com/Aakhri-Pastaa/ShadowTwin/actions/workflows/ingestor.yml)
 [![Demo CI](https://github.com/Aakhri-Pastaa/ShadowTwin/actions/workflows/demo.yml/badge.svg)](https://github.com/Aakhri-Pastaa/ShadowTwin/actions/workflows/demo.yml)
 [![Release](https://img.shields.io/github/v/release/Aakhri-Pastaa/ShadowTwin?color=1f6feb)](https://github.com/Aakhri-Pastaa/ShadowTwin/releases/latest)
 [![License](https://img.shields.io/badge/License-Apache_2.0-1f6feb.svg)](LICENSE)
@@ -14,6 +15,7 @@
 
 ![Wazuh](https://img.shields.io/badge/Wazuh-1a3d6d?logo=wazuh&logoColor=white)
 ![Kafka](https://img.shields.io/badge/Apache_Kafka-231f20?logo=apachekafka&logoColor=white)
+![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169e1?logo=postgresql&logoColor=white)
 ![Python](https://img.shields.io/badge/Python_3.12-3776ab?logo=python&logoColor=white)
 ![systemd](https://img.shields.io/badge/systemd-30d475?logo=linux&logoColor=black)
 
@@ -29,6 +31,11 @@ full event stream to `archives.json`. ShadowTwin tails both files like
 `wazuh-logs`), and persists its read position **only after the broker
 acknowledges the write**. It runs as a systemd service on the Wazuh manager
 host.
+
+The **ingestor** reads `wazuh-alerts` from Kafka and stores each alert as a
+row in a PostgreSQL `findings` table — typed columns for time, rule, severity,
+ATT&CK techniques, agent and source, plus the full alert as `jsonb` — once
+each, whatever the forwarder re-sent.
 
 <div align="center">
 <img src="forwarder/assets/pipeline.svg" alt="alerts.json and archives.json tailed by the ShadowTwin Forwarder systemd service into the Kafka topics wazuh-alerts and wazuh-logs" width="600">
@@ -96,9 +103,29 @@ exists, uncompressed, where the forwarder searches for it. If it has been
 deleted or compressed before restart, the forwarder cannot read it and says
 so: an `ERROR` naming the inode and the offset after which data was not
 forwarded, never a silent skip. Consumers must deduplicate, typically on the
-Wazuh alert ID. Exactly-once would need a transactional sink and two-phase
-commit across a file and a network boundary; a duplicate alert is an
-inconvenience, a missing one is missing evidence.
+Wazuh alert ID — the ingestor does exactly that. Exactly-once from file to
+Kafka would need two-phase commit across a file and a network boundary; a
+duplicate alert is an inconvenience, a missing one is missing evidence.
+
+**The ingestor** ([`ingestor/`](ingestor/)) applies the same rule on the
+consuming side — commit the position only with the data — and gets
+exactly-once into the table:
+
+- **Offsets live in PostgreSQL**, written in the same transaction as the rows
+  they cover. A crash leaves both or neither, so a restart re-reads exactly
+  the uncommitted batch.
+- **No consumer group.** Partitions are assigned directly at the stored
+  offsets; nothing is committed to Kafka. A group's session can expire during
+  a broker outage — the demo showed one fail to rejoin — and with offsets in
+  PostgreSQL it would add nothing.
+- **The Wazuh alert id is the primary key**, so a duplicate the forwarder
+  delivered is a no-op (`ON CONFLICT DO NOTHING`), counted but not stored.
+- **Database outage → rewind.** The batch in hand rolls back, but the
+  consumer has already read past it, so recovery re-assigns every partition
+  at the offset PostgreSQL holds rather than trusting its own position.
+- **One bad value cannot wedge the pipeline.** A batch PostgreSQL rejects is
+  retried row by row in savepoints; the row that fails is logged with its
+  exact Kafka position, the rest land, and the offsets advance.
 
 ## Try it
 
@@ -108,9 +135,9 @@ The whole pipeline runs on one machine with no Wazuh installation:
 cd demo && docker compose up --build
 ```
 
-Kafka, a generator writing Wazuh-shaped NDJSON, the forwarder, and a consumer
-that prints what arrives. Every alert carries a monotonic sequence number, so
-the consumer can audit for loss rather than assert it:
+Kafka, a generator writing Wazuh-shaped NDJSON, the forwarder, the ingestor
+and PostgreSQL, and a consumer that prints what arrives. Every alert carries a
+monotonic sequence number, so loss is audited rather than asserted:
 
 ```
 [audit] received=312 unique=312 highest=312 duplicates=0 | NO GAPS
@@ -127,7 +154,16 @@ three rotations, and on restart it drains the checkpointed file from
 ```
 
 Three duplicates — lines delivered just before the kill but not yet
-checkpointed — and no gaps. See [`demo/`](demo/).
+checkpointed — and no gaps. Those duplicates stop at the table. From one run
+in which the ingestor was killed, the database stopped for 25 seconds, and the
+forwarder killed across three rotations:
+
+| | Messages | Duplicates | Gaps |
+|---|---|---|---|
+| `wazuh-alerts` topic | 1,676 | 6 | 0 |
+| `findings` table | 1,725 rows | 0 | 0 |
+
+See [`demo/`](demo/).
 
 ## Install
 
@@ -149,6 +185,11 @@ systemctl status shadowtwin-forwarder
 Docker is supported as an alternative; the container needs the host's `wazuh`
 GID via `group_add`. Configuration reference, upgrades and troubleshooting:
 [`forwarder/README.md`](forwarder/README.md).
+
+**The ingestor** runs anywhere that can reach both Kafka and PostgreSQL — it
+ships as a container image, configured through environment variables, and
+creates its own tables on first start. See
+[`ingestor/README.md`](ingestor/README.md).
 
 ## Operation
 
@@ -193,8 +234,10 @@ root.
 cd forwarder && python tests/smoke_test.py
 ```
 
-59 checks in CI on every push, alongside `ruff`. Fault injection, not
-happy path — each induces a failure and asserts the recovery:
+59 checks for the forwarder in CI on every push, alongside `ruff` — plus 30
+for the ingestor, run against a real PostgreSQL, and 27 for the demo pipeline.
+Fault injection, not happy path — each induces a failure and asserts the
+recovery. The forwarder's:
 
 | Induced | Asserted |
 |---|---|
@@ -216,7 +259,10 @@ happy path — each induces a failure and asserts the recovery:
 | Rotated file in a dated directory | Found through the configured `rotated:` glob |
 | Newer compressed sibling | Ignored |
 
-Linux required: the rotation tests need real inode semantics.
+Linux required: the rotation tests need real inode semantics. The
+ingestor's checks — duplicates, atomic offsets, a poison value mid-batch,
+restart, database loss mid-stream — are listed in
+[`ingestor/README.md`](ingestor/README.md#tests).
 
 ## Limitations
 
@@ -227,7 +273,8 @@ Linux required: the rotation tests need real inode semantics.
 - **Single broker** in the default config, though `bootstrap_servers` takes a list.
 - **Linux only** — inode-based rotation detection, systemd, POSIX `os.replace`.
 - **Tested against Wazuh 4.x on one homelab deployment.** Not validated across versions or benchmarked at production rates.
-- **Transport only.** No parsing, enrichment, correlation or storage. Alert contents are never inspected beyond validating each line is syntactically valid JSON.
+- **One ingestor instance.** Partitions are assigned directly, without a consumer group; a second instance would duplicate the work (though not the rows).
+- **Transport and storage only.** No triage, enrichment, correlation or alerting. The forwarder never inspects alert contents beyond validating that each line is JSON; the ingestor maps fields to columns and keeps the rest verbatim.
 
 ## Scope, and why it is frozen
 
@@ -246,6 +293,11 @@ one-command onboarding. Complete and tested, archived once Wazuh proved the
 better foundation: reuse the mature tool, build only the differentiating
 glue. Still at [`go-agent-v0/`](go-agent-v0/), still green in CI.
 
+The ingestor is the one piece of the original design built after the freeze:
+it extends the pipeline rather than reviving the platform, and its schema is
+the ingestion slice of the Finding object from the archived
+[`architecture-v2.md`](docs/archive/architecture-v2.md).
+
 ## Documentation
 
 | | |
@@ -256,11 +308,12 @@ glue. Still at [`go-agent-v0/`](go-agent-v0/), still green in CI.
 | 🧰 [forwarder/README](forwarder/README.md) | Config reference, operations, troubleshooting |
 | 🧪 [DEPLOYMENT](docs/DEPLOYMENT.md) · [TROUBLESHOOTING](docs/TROUBLESHOOTING.md) | Deep dives |
 | 🧪 [demo/](demo/) | One-command environment, no Wazuh needed |
+| 🗃️ [ingestor/README](ingestor/README.md) | Findings schema, delivery semantics, example queries |
 | 📓 [DEVLOG](DEVLOG.md) | Build history |
 | 🗄️ [archive/](docs/archive/) | The original design — never implemented |
 
 ## Built with
 
-Python 3.12 · [confluent-kafka](https://github.com/confluentinc/confluent-kafka-python) (librdkafka) · Apache Kafka 4 (KRaft) · Wazuh · systemd · Docker
+Python 3.12 · [confluent-kafka](https://github.com/confluentinc/confluent-kafka-python) (librdkafka) · Apache Kafka 4 (KRaft) · PostgreSQL 17 · [psycopg 3](https://www.psycopg.org/psycopg3/) · Wazuh · systemd · Docker
 
 Licensed under [Apache-2.0](LICENSE).

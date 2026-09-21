@@ -12,6 +12,38 @@ expected.
 
 ---
 
+## 2026-09-21 (later)
+
+**Decision.** Build the ingestor — Kafka → PostgreSQL findings store — as
+the one addition after the freeze.
+
+**Reason.** It extends the pipeline rather than reviving the platform: it
+stores what the forwarder already delivers, and nothing in it triages,
+validates or remediates. It completes the path the project's own docs had
+named as next since July, and its schema is the ingestion slice of the
+archived Finding object, so the June design work carries forward.
+
+**Decision.** Store Kafka offsets in PostgreSQL, in the same transaction as
+the rows, and assign partitions directly instead of joining a consumer group.
+
+**Reason.** Committing offsets to Kafka separately from the rows leaves a
+window in which one is written without the other. Keeping them in one
+transaction closes it: the table is exactly-once with respect to the topic.
+With offsets outside Kafka a consumer group adds nothing but a coordinator —
+and the demo had shown a group member's session expire during a broker
+outage and fail to rejoin a single-node cluster. The cost is one instance
+and no automatic rebalancing, which suits the volume.
+
+**Decision.** Deduplicate on Wazuh's alert id, not on Kafka position.
+
+**Reason.** The forwarder is at-least-once, so the same alert can occupy two
+Kafka offsets. Only the alert's own identity makes the second copy
+recognisable. `(manager, alert_id)` is unique per Wazuh manager; an alert
+without an id falls back to the SHA-256 of its bytes, which a re-delivered
+copy shares.
+
+---
+
 ## 2026-09-21
 
 **Decision.** Reopen the scope-frozen forwarder for a correctness fix and
