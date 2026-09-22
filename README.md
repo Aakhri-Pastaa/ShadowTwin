@@ -16,6 +16,7 @@
 
 > [!NOTE]
 > **Status: v1.2.0, scope frozen.** The forwarder runs as a systemd service on my homelab's Wazuh manager. The ingestor is verified in the Docker demo and in CI, but it is not deployed on the homelab, where the pipeline currently ends at Kafka.
+>
 > Designed and directed by Kunal Patil; developed with AI coding assistants. See [AI disclosure](#ai-disclosure).
 
 ## What it does
