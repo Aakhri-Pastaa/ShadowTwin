@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="docs/assets/hero.svg" alt="ShadowTwin — Wazuh alerts into Kafka, without losing one" width="100%">
+<img src="docs/assets/hero.svg" alt="ShadowTwin: Wazuh alerts into Kafka, without losing one. The forwarder's at-least-once loop: tail, produce, commit, resume." width="100%">
 
 <br/><br/>
 
@@ -11,17 +11,12 @@
 [![Demo CI](https://github.com/Aakhri-Pastaa/ShadowTwin/actions/workflows/demo.yml/badge.svg)](https://github.com/Aakhri-Pastaa/ShadowTwin/actions/workflows/demo.yml)
 [![Release](https://img.shields.io/github/v/release/Aakhri-Pastaa/ShadowTwin?color=1f6feb)](https://github.com/Aakhri-Pastaa/ShadowTwin/releases/latest)
 [![License](https://img.shields.io/badge/License-Apache_2.0-1f6feb.svg)](LICENSE)
-[![Scope](https://img.shields.io/badge/scope-frozen-8957e5.svg)](docs/DECISIONS.md)
-
-![Wazuh](https://img.shields.io/badge/Wazuh-1a3d6d?logo=wazuh&logoColor=white)
-![Kafka](https://img.shields.io/badge/Apache_Kafka-231f20?logo=apachekafka&logoColor=white)
-![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169e1?logo=postgresql&logoColor=white)
-![Python](https://img.shields.io/badge/Python_3.12-3776ab?logo=python&logoColor=white)
-![systemd](https://img.shields.io/badge/systemd-30d475?logo=linux&logoColor=black)
 
 </div>
 
----
+> [!NOTE]
+> **Status: v1.2.0, scope frozen.** The forwarder runs as a systemd service on my homelab's Wazuh manager. The ingestor is verified in the Docker demo and in CI, but it is not deployed on the homelab, where the pipeline currently ends at Kafka.
+> Designed and directed by Kunal Patil; developed with AI coding assistants. See [AI disclosure](#ai-disclosure).
 
 ## What it does
 
@@ -37,9 +32,32 @@ row in a PostgreSQL `findings` table — typed columns for time, rule, severity,
 ATT&CK techniques, agent and source, plus the full alert as `jsonb` — once
 each, whatever the forwarder re-sent.
 
+It is transport and storage only — no triage, enrichment, correlation or
+alerting — and not the purple-team platform this repository was first
+designed as ([why](#why-the-scope-is-frozen)).
+
 <div align="center">
 <img src="forwarder/assets/pipeline.svg" alt="alerts.json and archives.json tailed by the ShadowTwin Forwarder systemd service into the Kafka topics wazuh-alerts and wazuh-logs" width="600">
 </div>
+
+## Try it
+
+The whole pipeline runs on one machine with no Wazuh installation:
+
+```bash
+cd demo && docker compose up --build
+```
+
+Kafka, a generator writing Wazuh-shaped NDJSON, the forwarder, the ingestor
+and PostgreSQL, and a consumer that prints what arrives. Every alert carries a
+monotonic sequence number, so loss is audited rather than asserted:
+
+```text
+[audit] received=312 unique=312 highest=312 duplicates=0 | NO GAPS
+```
+
+[`demo/README.md`](demo/README.md) walks through breaking it; what those runs
+measured is under [Results](#results).
 
 ## The problem
 
@@ -127,21 +145,7 @@ exactly-once into the table:
   retried row by row in savepoints; the row that fails is logged with its
   exact Kafka position, the rest land, and the offsets advance.
 
-## Try it
-
-The whole pipeline runs on one machine with no Wazuh installation:
-
-```bash
-cd demo && docker compose up --build
-```
-
-Kafka, a generator writing Wazuh-shaped NDJSON, the forwarder, the ingestor
-and PostgreSQL, and a consumer that prints what arrives. Every alert carries a
-monotonic sequence number, so loss is audited rather than asserted:
-
-```
-[audit] received=312 unique=312 highest=312 duplicates=0 | NO GAPS
-```
+## Results
 
 The generator rotates and truncates the log while it runs. Stop the broker
 and the forwarder holds the backlog — 236 alerts in the verification run —
@@ -149,7 +153,7 @@ and delivers it on reconnect. `SIGKILL` the forwarder and keep it down across
 three rotations, and on restart it drains the checkpointed file from
 `alerts.json.3` and walks forward through `.2` and `.1`:
 
-```
+```text
 [audit] received=806 unique=803 highest=803 duplicates=3 | NO GAPS
 ```
 
@@ -163,11 +167,22 @@ forwarder killed across three rotations:
 | `wazuh-alerts` topic | 1,676 | 6 | 0 |
 | `findings` table | 1,725 rows | 0 | 0 |
 
-See [`demo/`](demo/).
+Conditions: the Docker demo on one machine — forwarder runs at v1.1.0, the
+combined run at v1.2.0, with the forwarder unchanged between them. These are
+correctness figures, not throughput. Steps to reproduce:
+[`demo/README.md`](demo/README.md).
 
 ## Install
 
-On the Wazuh manager host, which is where `/var/ossec/logs` is readable:
+| Requirement | Version | Why |
+|---|---|---|
+| Linux host running the Wazuh manager | Wazuh 4.x | Reads `/var/ossec/logs`; inode-based rotation |
+| Python | 3.12+ | Forwarder and ingestor |
+| Apache Kafka | tested with 4.0 (KRaft) | Topics `wazuh-alerts`, `wazuh-logs` |
+| PostgreSQL | tested with 17 | Ingestor only |
+| systemd | — | Runs the forwarder as a service |
+
+On the Wazuh manager host:
 
 ```bash
 cd forwarder && sudo ./install_service.sh
@@ -197,8 +212,8 @@ Four startup checks run before anything is forwarded. Broker and topic
 existence are probed with an `AdminClient` metadata request, so the check
 cannot itself trigger topic auto-creation:
 
-```
-ShadowTwin Forwarder v1.0.0
+```text
+ShadowTwin Forwarder v1.1.0
 Forward:  /var/ossec/logs/alerts/alerts.json -> wazuh-alerts
 Forward:  /var/ossec/logs/archives/archives.json -> wazuh-logs
 startup check: Kafka       OK   (connected to localhost:9092; 1 broker(s) in cluster)
@@ -209,24 +224,10 @@ startup check: Permissions OK   (/var/lib/shadowtwin-forwarder writable)
 
 Only a permissions failure is fatal. An unreachable broker or missing source
 file are warnings — both self-heal, and aborting would mean a forwarder that
-refuses to start during the outage it exists to survive.
-
-Stats every 60 s; `in_flight=0` means nothing is unaccounted for:
-
-```
-stats: produced=1284 acked=1284 failed=0 parse_errors=0 reconnects=0 queued=0 in_flight=0 | offsets: alerts=418223, archives=9912014
-```
-
-Broker loss and recovery are logged once each, not per retry:
-
-```
-WARNING  producer   all Kafka brokers are down; buffering locally and reconnecting in the background
-INFO     producer   Kafka connection restored; deliveries flowing again
-```
-
-`python app.py --health` exits 0 when healthy, for monitoring. Both check
-modes are print-only and will not create or chown service files if run as
-root.
+refuses to start during the outage it exists to survive. Broker loss and
+recovery are logged once each, not per retry. The per-minute stats line and
+`--health` for monitoring are documented in
+[`forwarder/README.md`](forwarder/README.md).
 
 ## Testing
 
@@ -234,8 +235,9 @@ root.
 cd forwarder && python tests/smoke_test.py
 ```
 
-59 checks for the forwarder in CI on every push, alongside `ruff` — plus 30
-for the ingestor, run against a real PostgreSQL, and 27 for the demo pipeline.
+59 checks for the forwarder, run in CI with `ruff` on every change to
+`forwarder/` — plus 30 for the ingestor, run against a real PostgreSQL, and 27
+for the demo pipeline.
 Fault injection, not happy path — each induces a failure and asserts the
 recovery. The forwarder's:
 
@@ -264,7 +266,15 @@ ingestor's checks — duplicates, atomic offsets, a poison value mid-batch,
 restart, database loss mid-stream — are listed in
 [`ingestor/README.md`](ingestor/README.md#tests).
 
-## Limitations
+## Status and limitations
+
+| Area | Status | Notes |
+|---|---|---|
+| Forwarder | Works | systemd service on my homelab's Wazuh manager |
+| Ingestor | Demo-only | Docker demo and CI (real PostgreSQL); not on the homelab |
+| Demo environment | Works | CI runs its 27 checks and validates the compose file |
+| Go agent (`go-agent-v0/`) | Archived | Superseded by Wazuh; CI kept green |
+| Purple-team platform | Not built | Scope frozen 2026-09-20; design in [`docs/archive/`](docs/archive/) |
 
 - **At-least-once, not exactly-once.** Consumers must deduplicate.
 - **Rotation recovery needs the rotated file to still exist, uncompressed.** Wazuh's own daily rotation moves logs into dated directories and compresses them; a forwarder that is down across it can only recover if the uncompressed file is still present. Otherwise the loss is logged, not recovered.
@@ -274,24 +284,24 @@ restart, database loss mid-stream — are listed in
 - **Linux only** — inode-based rotation detection, systemd, POSIX `os.replace`.
 - **Tested against Wazuh 4.x on one homelab deployment.** Not validated across versions or benchmarked at production rates.
 - **One ingestor instance.** Partitions are assigned directly, without a consumer group; a second instance would duplicate the work (though not the rows).
-- **Transport and storage only.** No triage, enrichment, correlation or alerting. The forwarder never inspects alert contents beyond validating that each line is JSON; the ingestor maps fields to columns and keeps the rest verbatim.
+- **No inspection of content.** The forwarder only validates that each line is JSON; the ingestor maps fields to columns and keeps the rest verbatim.
 
-## Scope, and why it is frozen
+## Why the scope is frozen
 
-ShadowTwin was designed as a closed-loop purple-team lab: Wazuh detects, an
+I designed ShadowTwin as a closed-loop purple-team lab: Wazuh detects, an
 Evaluator triages, an Attacker proves exploitability in a sandbox, a Defender
 advises a fix, a human applies it, the Attacker re-runs to prove closure.
-**None of it was built.** Scope was frozen at the ingestion layer on
-2026-09-20 and the design archived — reasoning in
+**None of it was built.** On 2026-09-20 I froze the scope at the ingestion
+layer and archived the design — reasoning in
 [`docs/DECISIONS.md`](docs/DECISIONS.md), design in
 [`docs/archive/`](docs/archive/).
 
-Second time the project cut on that principle. It started with a custom Go
-agent — mutual-TLS transport, CSR enrollment with the key never leaving the
-host, certificate renewal and revocation, a crash-safe bounded disk queue,
-one-command onboarding. Complete and tested, archived once Wazuh proved the
+It was the second time I cut on that principle. The project started with a
+custom Go agent — mutual-TLS transport, CSR enrollment with the key never
+leaving the host, certificate renewal and revocation, a crash-safe disk
+queue. It was complete and tested, and I archived it once Wazuh proved the
 better foundation: reuse the mature tool, build only the differentiating
-glue. Still at [`go-agent-v0/`](go-agent-v0/), still green in CI.
+glue. It is still at [`go-agent-v0/`](go-agent-v0/), still green in CI.
 
 The ingestor is the one piece of the original design built after the freeze:
 it extends the pipeline rather than reviving the platform, and its schema is
@@ -300,17 +310,40 @@ the ingestion slice of the Finding object from the archived
 
 ## Documentation
 
-| | |
+| Need | Start here |
 |---|---|
-| 📊 [PROJECT_STATUS](docs/PROJECT_STATUS.md) | What is actually running |
-| 🏗️ [TOPOLOGY](docs/TOPOLOGY.md) | Deployment topology |
-| 🧭 [DECISIONS](docs/DECISIONS.md) · [ADRs](docs/adr/) | Why things are the way they are |
-| 🧰 [forwarder/README](forwarder/README.md) | Config reference, operations, troubleshooting |
-| 🧪 [DEPLOYMENT](docs/DEPLOYMENT.md) · [TROUBLESHOOTING](docs/TROUBLESHOOTING.md) | Deep dives |
-| 🧪 [demo/](demo/) | One-command environment, no Wazuh needed |
-| 🗃️ [ingestor/README](ingestor/README.md) | Findings schema, delivery semantics, example queries |
-| 📓 [DEVLOG](DEVLOG.md) | Build history |
-| 🗄️ [archive/](docs/archive/) | The original design — never implemented |
+| What is actually running | [`docs/PROJECT_STATUS.md`](docs/PROJECT_STATUS.md) |
+| Deployment topology | [`docs/TOPOLOGY.md`](docs/TOPOLOGY.md) |
+| Why things are the way they are | [`docs/DECISIONS.md`](docs/DECISIONS.md) · [ADRs](docs/adr/) |
+| Forwarder configuration, operations, troubleshooting | [`forwarder/README.md`](forwarder/README.md) |
+| Deployment and troubleshooting deep dives | [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) · [`docs/TROUBLESHOOTING.md`](docs/TROUBLESHOOTING.md) |
+| Running it without Wazuh | [`demo/`](demo/) |
+| Findings schema, delivery semantics, example queries | [`ingestor/README.md`](ingestor/README.md) |
+| Build history | [`DEVLOG.md`](DEVLOG.md) |
+| The original design, never implemented | [`docs/archive/`](docs/archive/) |
+
+## AI disclosure
+
+I designed ShadowTwin and made its decisions: the problem it solves, the
+pivot from a custom Go agent to Wazuh, freezing the scope at the ingestion
+layer, the delivery guarantees and the trade-offs behind them — at-least-once
+into Kafka, exactly-once into PostgreSQL, no consumer group — and when to
+release. AI coding assistants (Claude Code) did much of the development under
+my direction: writing and refactoring the Python and Go code, drafting tests
+and documentation, and running builds, tests and the demo.
+
+| Area | Who |
+|---|---|
+| Idea, scope, architecture, design decisions | Me |
+| Trade-offs, what to cut, when to release | Me |
+| Code, tests, documentation drafts, tooling runs | AI assistants, directed by me |
+| Review, verification, approval to merge | Me |
+
+AI output is checked, not trusted. Nothing reaches `main` without my
+approval, and every number here comes from a reproducible run. Checking has
+caught real errors: the demo's sequence-number auditor exposed a data-loss
+bug in the released v1.0.0, fixed in v1.1.0, and the v1.0.0 docs claimed 44
+test assertions where the suite executed 42.
 
 ## Built with
 
