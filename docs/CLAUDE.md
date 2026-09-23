@@ -45,7 +45,9 @@ That is the whole system. **Scope is frozen** at this layer as of
    Defender, environment graph, threat-intel correlation, vulnerable lab,
    benchmark or frontend described in `docs/archive/`. If a change requires
    one of them, the answer is no. Extending the *existing* pipeline
-   (consumer, storage, packaging, tests, docs) is fine.
+   (consumer, storage, packaging, tests, docs) is fine. `experiments/`
+   holds design-only proposals (currently `ai-triage/`): nothing there runs
+   or ships, and building one needs a `DECISIONS.md` entry and an ADR first.
 2. **No offensive tooling.** This repository contains none, and an earlier
    design's `lab/scope.yaml` scope-lock was never implemented. Do not add
    scanning, exploitation, or any code that sends traffic to a target. If
