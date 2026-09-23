@@ -276,6 +276,7 @@ restart, database loss mid-stream — are listed in
 | Demo environment | Works | CI runs its 27 checks and validates the compose file |
 | Go agent (`go-agent-v0/`) | Archived | Superseded by Wazuh; CI kept green |
 | Purple-team platform | Not built | Scope frozen 2026-09-20; design in [`docs/archive/`](docs/archive/) |
+| AI-assisted triage | Not built | Design-only experiment in [`experiments/ai-triage/`](experiments/ai-triage/) |
 
 - **At-least-once, not exactly-once.** Consumers must deduplicate.
 - **Rotation recovery needs the rotated file to still exist, uncompressed.** Wazuh's own daily rotation moves logs into dated directories and compresses them; a forwarder that is down across it can only recover if the uncompressed file is still present. Otherwise the loss is logged, not recovered.
@@ -322,6 +323,7 @@ the ingestion slice of the Finding object from the archived
 | Findings schema, delivery semantics, example queries | [`ingestor/README.md`](ingestor/README.md) |
 | Build history | [`DEVLOG.md`](DEVLOG.md) |
 | The original design, never implemented | [`docs/archive/`](docs/archive/) |
+| A design-only experiment: local-LLM triage grounded in ATT&CK, KEV and NVD | [`experiments/ai-triage/`](experiments/ai-triage/) |
 
 ## AI disclosure
 

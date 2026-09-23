@@ -116,6 +116,12 @@ Not planned, but consistent with the frozen scope:
 - A read-only view over `findings`. It would present the store, not revive
   the archived platform.
 
+Outside the frozen scope, recorded as a design only:
+
+- **AI-assisted triage** — [`experiments/ai-triage/`](../experiments/ai-triage/).
+  Not built and not tested; see the 2026-09-23 entry in
+  [`DECISIONS.md`](DECISIONS.md).
+
 ## Blockers
 
 None.

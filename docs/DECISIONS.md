@@ -12,6 +12,22 @@ expected.
 
 ---
 
+## 2026-09-23
+
+**Decision.** Record AI-assisted triage — local-LLM verdicts over the
+`findings` table, with every fact grounded in MITRE ATT&CK, the CISA KEV
+catalog and the NVD — as a design-only experiment in
+`experiments/ai-triage/`. The scope freeze stands.
+
+**Reason.** The design is feasible: the three data sources were checked on
+2026-09-23, and the findings table already carries the alert, its ATT&CK
+IDs and its level. But evaluating a local model on a labelled set needs
+resources that are not available now, and an untested LLM layer would weaken
+the part of the project that is verified. `experiments/` holds designs, not
+running code; building one needs its own entry here and an ADR.
+
+---
+
 ## 2026-09-21 (later)
 
 **Decision.** Build the ingestor — Kafka → PostgreSQL findings store — as
